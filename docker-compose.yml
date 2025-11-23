@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: booru-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: booru
+      MYSQL_USER: booru
+      MYSQL_PASSWORD: boorupass
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - booru-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: booru-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: booru
+      DB_USER: booru
+      DB_PASSWORD: boorupass
+      SCAN_INTERVAL_MINUTES: 15
+    volumes:
+      # Option 1: Mount your home directory to access all your images
+      # This allows adding folders via web UI without restarting
+      - ${HOME}:/host:ro
+
+      # Option 2: For maximum flexibility, mount entire filesystem (Linux/Mac)
+      # Uncomment this and comment out the HOME mount above if needed
+      # - /:/host:ro
+
+      # Option 2a: For Windows (if using WSL, use /mnt/c for C: drive)
+      # - /mnt/c:/host:ro
+
+      # Option 3: Mount each image location individually for security/access control reasons
+      # - /path/to/your/images:/host/images:ro
+	    # - /another/path:/host/more-images:ro
+
+      - thumbnail-data:/app/thumbnails
+    networks:
+      - booru-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: booru-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      REACT_APP_API_URL: http://localhost:4000
+    networks:
+      - booru-network
+    depends_on:
+      - backend
+
+networks:
+  booru-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  thumbnail-data:

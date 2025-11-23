@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+src
+tsconfig.json
+.env
+.git
+.gitignore
+*.md
