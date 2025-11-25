@@ -5,6 +5,8 @@
  */
 
 // Copy the search parser code here for standalone testing
+// Skip anything after the buildSQLFromAST() function
+// ======================================COPY-PASTE SERVICES/SEARCH.TS IN THIS SECTION======================================
 enum TokenType {
   TAG = 'TAG',
   NOT = 'NOT',
@@ -245,6 +247,8 @@ function buildSQLFromAST(node: ASTNode): { sql: string; params: string[] } {
       throw new Error(`Unknown node type: ${node.type}`);
   }
 }
+
+// ======================================END OF COPY-PASTE SECTION======================================
 
 function prettyPrintAST(node: ASTNode, indent = 0): string {
   const spaces = '  '.repeat(indent);

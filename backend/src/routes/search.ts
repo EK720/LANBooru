@@ -1,22 +1,22 @@
 import { Router } from 'express';
 import { searchImages, suggestTags } from '../services/search';
 
-const MAX_POSTS_PER_QUERY = 100;  // Max 100 results per page
+const MAX_POSTS_PER_QUERY = parseInt(process.env.MAX_RESULTS_PER_PAGE || '100');
 const router = Router();
 
 /**
- * POST /api/search
+ * GET /api/search?q=query&page=1&limit=50&sort=date_desc
  * Search for images by tags
  */
-router.post('/', async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const { query, page = 1, limit = 50, sort = 'date_desc' } = req.body;
+    const { q = '', page = '1', limit = '50', sort = 'date_desc' } = req.query;
 
     const result = await searchImages({
-      query: query || '',
+      query: String(q),
       page: parseInt(String(page)),
       limit: Math.min(parseInt(String(limit)), MAX_POSTS_PER_QUERY),
-      sort
+      sort: String(sort) as any
     });
 
     res.json(result);

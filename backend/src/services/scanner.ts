@@ -35,12 +35,12 @@ export async function scanFolder(folder: Folder): Promise<number> {
   return addedCount;
 }
 
-/**
- * Find all image files in a directory
- */
-async function findImageFiles(dirPath: string, recursive: boolean): Promise<string[]> {
+// Find all image files in a directory
+async function findImageFiles(dirPath: string, recursive: boolean | string): Promise<string[]> {
   const files: string[] = [];
-
+  // i hate javascript, apparently those param types aren't enforced at all
+  recursive = recursive === true || recursive === 'true' || Number(recursive) === 1;
+  
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
@@ -65,9 +65,7 @@ async function findImageFiles(dirPath: string, recursive: boolean): Promise<stri
   return files;
 }
 
-/**
- * Process a single file and add it to the database
- */
+// Process a single file and add it to the database
 async function processFile(filePath: string): Promise<boolean> {
   try {
     // Check if file exists and get stats
@@ -99,8 +97,8 @@ async function processFile(filePath: string): Promise<boolean> {
     // Insert or update image
     const result = await execute(
       `INSERT INTO images
-        (file_path, filename, file_type, file_size, file_hash, width, height, artist, rating, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (file_path, filename, file_type, file_size, file_hash, width, height, artist, rating, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         filePath,
         path.basename(filePath),
@@ -111,7 +109,8 @@ async function processFile(filePath: string): Promise<boolean> {
         metadata.height || 0,
         metadata.artist || null,
         metadata.rating || null,
-        metadata.source || null
+        metadata.source || null,
+		metadata.date	|| new Date()
       ]
     );
 
@@ -133,9 +132,7 @@ async function processFile(filePath: string): Promise<boolean> {
   }
 }
 
-/**
- * Add tags to an image
- */
+// Add tags to an image
 async function addTagsToImage(imageId: number, tagNames: string[]): Promise<void> {
   await transaction(async (conn) => {
     for (const tagName of tagNames) {

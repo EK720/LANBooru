@@ -5,7 +5,7 @@ import { createHash } from 'crypto';
 import ffmpeg from 'fluent-ffmpeg';
 
 // Single thumbnail size - largest dimension will be this size, aspect ratio preserved
-export const THUMBNAIL_SIZE = 300;
+export const THUMBNAIL_SIZE = parseInt(process.env.THUMBNAIL_SIZE || '300');
 
 const THUMBNAIL_DIR = process.env.THUMBNAIL_DIR || '/app/thumbnails';
 
@@ -178,8 +178,8 @@ export async function resizeThumbnail(
 ): Promise<Buffer> {
   return sharp(thumbnailPath)
     .resize(targetSize, targetSize, {
-      fit: 'inside',
-      withoutEnlargement: true
+      fit: 'inside'
+      // Allow upscaling for flexibility
     })
     .jpeg({ quality: 85 })
     .toBuffer();

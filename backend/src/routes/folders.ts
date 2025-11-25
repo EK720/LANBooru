@@ -26,16 +26,32 @@ router.get('/', async (req, res) => {
 /**
  * POST /api/folders
  * Add a new folder to scan
+ * Body: { "path": "/host/path/to/images", "recursive": true }
  */
 router.post('/', async (req, res) => {
   try {
     const { path, recursive = true } = req.body;
 
     if (!path || typeof path !== 'string') {
-      return res.status(400).json({ error: 'Path is required' });
+      console.log('Path validation failed - path:', path, 'type:', typeof path);
+      return res.status(400).json({
+        error: 'Path is required',
+        received: { path, type: typeof path, body: req.body }
+      });
     }
 
-    // Check if folder already exists
+    // Verify folder exists on filesystem
+    const fs = await import('fs/promises');
+    try {
+      const stats = await fs.stat(path);
+      if (!stats.isDirectory()) {
+        return res.status(400).json({ error: 'Path is not a directory' });
+      }
+    } catch (error) {
+      return res.status(400).json({ error: 'Folder does not exist or is not accessible' });
+    }
+
+    // Check if folder already exists in database
     const existing = await queryOne<Folder>(
       'SELECT id FROM folders WHERE path = ?',
       [path]
@@ -47,7 +63,7 @@ router.post('/', async (req, res) => {
 
     // Insert folder
     const result = await execute(
-      'INSERT INTO folders (path, recursive, enabled) VALUES (?, ?, TRUE)',
+      'INSERT INTO folders (path, do_recurse, enabled) VALUES (?, ?, TRUE)',
       [path, recursive]
     );
 
@@ -73,13 +89,38 @@ router.post('/', async (req, res) => {
 
 /**
  * DELETE /api/folders/:id
- * Remove a folder (does not delete images from database)
+ * Remove a folder and clean up its images from database
  */
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const folderId = parseInt(id);
 
-    await execute('DELETE FROM folders WHERE id = ?', [parseInt(id)]);
+    // Get folder path before deleting
+    const folder = await queryOne<Folder>(
+      'SELECT path FROM folders WHERE id = ?',
+      [folderId]
+    );
+
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    // Delete folder from database
+    const result = await execute('DELETE FROM folders WHERE id = ?', [folderId]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    // Clean up images that were in this folder
+    // Delete images where file_path starts with the folder path
+    await execute(
+      'DELETE FROM images WHERE file_path LIKE ?',
+      [folder.path + '%']
+    );
+
+    console.log(`Deleted folder ${folder.path} and cleaned up associated images`);
 
     res.status(204).send();
   } catch (error) {
