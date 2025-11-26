@@ -7,32 +7,82 @@ import { Folder, Image } from '../types';
 
 const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.mp4', '.webm', '.mkv', '.webp'];
 
-/**
- * Scan a folder for images and add them to the database
- */
-export async function scanFolder(folder: Folder): Promise<number> {
-  console.log(`Scanning folder: ${folder.path} (recursive: ${folder.recursive ? "true" : "false"})`);
+// Global scan lock to prevent concurrent scans
+let isScanningInProgress = false;
+let scanLockResolve: (() => void) | null = null;
 
-  let addedCount = 0;
-  const files = await findImageFiles(folder.path, folder.recursive);
-
-  for (const filePath of files) {
-    try {
-      const added = await processFile(filePath);
-      if (added) addedCount++;
-    } catch (error) {
-      console.error(`Error processing ${filePath}:`, error);
-    }
+// Acquire scan lock, waiting if necessary
+async function acquireScanLock(wait: boolean = true): Promise<boolean> {
+  if (!isScanningInProgress) {
+    isScanningInProgress = true;
+    return true;
   }
 
-  // Update last scanned timestamp
-  await execute(
-    'UPDATE folders SET last_scanned_at = NOW() WHERE id = ?',
-    [folder.id]
-  );
+  if (!wait) {
+    return false; // Don't wait, just skip
+  }
 
-  console.log(`Scan complete: ${addedCount} new images added from ${folder.path}`);
-  return addedCount;
+  // Wait for lock to be released
+  console.log('Waiting for ongoing scan to complete...');
+  await new Promise<void>(resolve => {
+    scanLockResolve = resolve;
+  });
+
+  isScanningInProgress = true;
+  return true;
+}
+
+/**
+ * Release scan lock
+ */
+function releaseScanLock(): void {
+  isScanningInProgress = false;
+  if (scanLockResolve) {
+    const resolve = scanLockResolve;
+    scanLockResolve = null;
+    resolve();
+  }
+}
+
+/**
+ * Scan a folder for images and add them to the database
+ * @param folder - Folder to scan
+ * @param waitForLock - If true, waits for ongoing scans. If false, skips if scan in progress
+ */
+export async function scanFolder(folder: Folder, waitForLock: boolean = true): Promise<number> {
+  // Acquire lock
+  const acquired = await acquireScanLock(waitForLock);
+  if (!acquired) {
+    console.log(`Skipping scan of ${folder.path} - another scan in progress`);
+    return 0;
+  }
+
+  try {
+    console.log(`Scanning folder: ${folder.path} (recursive: ${folder.recursive ? "true" : "false"})`);
+
+    let addedCount = 0;
+    const files = await findImageFiles(folder.path, folder.recursive);
+
+    for (const filePath of files) {
+      try {
+        const added = await processFile(filePath);
+        if (added) addedCount++;
+      } catch (error) {
+        console.error(`Error processing ${filePath}:`, error);
+      }
+    }
+
+    // Update last scanned timestamp
+    await execute(
+      'UPDATE folders SET last_scanned_at = NOW() WHERE id = ?',
+      [folder.id]
+    );
+
+    console.log(`Scan complete: ${addedCount} new images added from ${folder.path}`);
+    return addedCount;
+  } finally {
+    releaseScanLock();
+  }
 }
 
 // Find all image files in a directory
@@ -94,21 +144,23 @@ async function processFile(filePath: string): Promise<boolean> {
       await deleteImage(existing.id);
     }
 
-    // Generate thumbnail and get dHash
-    const contentHash = await generateThumbnail(filePath, fileHash);
+    // Generate thumbnail and get multi-resolution dHashes
+    const contentHashes = await generateThumbnail(filePath, fileHash);
 
     // Insert image first (we need the ID to compare with duplicates)
     const result = await execute(
       `INSERT INTO images
-        (file_path, filename, file_type, file_size, file_hash, content_hash, width, height, artist, rating, source, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (file_path, filename, file_type, file_size, file_hash, content_hash_800, content_hash_600, content_hash_1400, width, height, artist, rating, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         filePath,
         path.basename(filePath),
         path.extname(filePath).toLowerCase().substring(1), // Remove leading dot
         stats.size,
         fileHash,
-        contentHash,
+        contentHashes.hash800,
+        contentHashes.hash600,
+        contentHashes.hash1400,
         metadata.width || 0,
         metadata.height || 0,
         metadata.artist || null,
@@ -125,10 +177,11 @@ async function processFile(filePath: string): Promise<boolean> {
       await addTagsToImage(imageId, metadata.tags);
     }
 
-    // Check for duplicates by content_hash
+    // Check for duplicates by matching ANY of the 3 content hashes
     const duplicates = await query<Image>(
-      'SELECT id, width, height, file_path FROM images WHERE content_hash = ?',
-      [contentHash]
+      `SELECT id, width, height, file_path FROM images
+       WHERE (content_hash_800 = ? OR content_hash_600 = ? OR content_hash_1400 = ?)`,
+      [contentHashes.hash800, contentHashes.hash600, contentHashes.hash1400]
     );
 
     if (duplicates.length > 1) {
@@ -174,7 +227,7 @@ async function processFile(filePath: string): Promise<boolean> {
       }
     }
 
-    console.log(`Added: ${path.basename(filePath)} (${metadata.tags.length} tags)`);
+    console.log(`Added: ${path.basename(filePath)} (${metadata.tags.length} tags) as ID ${imageId}`);
     return true;
   } catch (error) {
     console.error(`Failed to process ${filePath}:`, error);
@@ -250,7 +303,7 @@ async function deleteImage(imageId: number): Promise<void> {
 }
 
 /**
- * Scan all enabled folders
+ * Scan all enabled folders (periodic scan - skips if manual scan running)
  */
 export async function scanAllFolders(): Promise<void> {
   console.log('Starting full scan of all folders...');
@@ -266,7 +319,8 @@ export async function scanAllFolders(): Promise<void> {
 
   let totalAdded = 0;
   for (const folder of folders) {
-    const added = await scanFolder(folder);
+    // waitForLock=false means periodic scans skip if manual scan is running
+    const added = await scanFolder(folder, false);
     totalAdded += added;
   }
 

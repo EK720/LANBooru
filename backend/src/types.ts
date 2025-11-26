@@ -5,7 +5,9 @@ export interface Image {
   file_type: string;
   file_size: number;
   file_hash: string;
-  content_hash?: string;
+  content_hash_800?: string;
+  content_hash_600?: string;
+  content_hash_1400?: string;
   width: number;
   height: number;
   artist?: string;

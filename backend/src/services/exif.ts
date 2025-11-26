@@ -68,9 +68,23 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
 	
 	// Extract date: prioritize CreateDate, fallback to mtime
 	if (metadata.CreateDate) {
-		date = new Date(metadata.CreateDate);
-	} else {
-		// Fall back to filesystem modified time
+		try {
+			// ExifDateTime objects have a .toDate() method
+			const parsedDate = typeof metadata.CreateDate.toDate === 'function'
+				? metadata.CreateDate.toDate()
+				: new Date(metadata.CreateDate);
+
+			// Check for invalid dates (e.g., 0000-00-00)
+			if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() >= 1900) {
+				date = parsedDate;
+			}
+		} catch {
+			// Invalid date format, will fall back to mtime
+		}
+	}
+
+	// Fall back to filesystem modified time if no valid EXIF date
+	if (!date) {
 		const fileTimes = fs.statSync(filePath);
 		if (fileTimes) {
 			date = fileTimes.mtime;

@@ -59,80 +59,29 @@ async function isFrameBlack(frameBuffer: Buffer, threshold: number = 30): Promis
 }
 
 /**
- * Compute 2D Discrete Cosine Transform for an NxN matrix
- * Simplified implementation for pHash
- */
-function computeDCT(matrix: number[][], N: number): number[][] {
-  const dct: number[][] = Array(N).fill(0).map(() => Array(N).fill(0));
-
-  for (let u = 0; u < N; u++) {
-    for (let v = 0; v < N; v++) {
-      let sum = 0;
-      for (let i = 0; i < N; i++) {
-        for (let j = 0; j < N; j++) {
-          sum += matrix[i][j] *
-            Math.cos(((2 * i + 1) * u * Math.PI) / (2 * N)) *
-            Math.cos(((2 * j + 1) * v * Math.PI) / (2 * N));
-        }
-      }
-
-      const cu = u === 0 ? 1 / Math.sqrt(2) : 1;
-      const cv = v === 0 ? 1 / Math.sqrt(2) : 1;
-      dct[u][v] = 0.25 * cu * cv * sum;
-    }
-  }
-
-  return dct;
-}
-
-/**
- * Generate pHash (DCT-based perceptual hash) for duplicate detection
- * More resilient to resizing, compression, and minor edits than dHash
+ * Generate dHash (difference hash) for duplicate detection
  * Returns 64-bit hash as 16-character hex string
  */
-export async function generatePHash(imageBuffer: Buffer): Promise<string> {
+async function generateDHash(imageBuffer: Buffer): Promise<string> {
   try {
-    // Resize to 32x32 for DCT computation
+    // Resize to 9x8 (need 9 columns to compare 8 adjacent pairs)
     const { data } = await sharp(imageBuffer)
-      .resize(32, 32, { fit: 'fill' })
+      .resize(9, 8, { fit: 'fill' })
       .grayscale()
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // Convert flat array to 2D matrix
-    const matrix: number[][] = [];
-    for (let i = 0; i < 32; i++) {
-      matrix[i] = [];
-      for (let j = 0; j < 32; j++) {
-        matrix[i][j] = data[i * 32 + j];
-      }
-    }
-
-    // Compute DCT
-    const dct = computeDCT(matrix, 32);
-
-    // Extract top-left 8x8 (low frequencies), skipping DC component at [0][0]
-    const lowFreq: number[] = [];
-    for (let i = 0; i < 8; i++) {
-      for (let j = 0; j < 8; j++) {
-        if (i !== 0 || j !== 0) { // Skip DC component
-          lowFreq.push(dct[i][j]);
-        }
-      }
-    }
-
-    // Calculate median of low frequency values
-    const sorted = [...lowFreq].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
-
-    // Generate hash: 1 if above median, 0 if below
+    // Build hash by comparing adjacent horizontal pixels
     let hash = '';
-    for (const value of lowFreq) {
-      hash += value > median ? '1' : '0';
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const leftPixel = data[y * 9 + x];
+        const rightPixel = data[y * 9 + x + 1];
+        hash += leftPixel < rightPixel ? '1' : '0';
+      }
     }
 
-    // Convert 63-bit binary string to hex (pad to 64 bits)
-    hash += '0'; // Pad to 64 bits
+    // Convert 64-bit binary string to 16-character hex string
     let hexHash = '';
     for (let i = 0; i < 64; i += 4) {
       const nibble = hash.substring(i, i + 4);
@@ -141,8 +90,37 @@ export async function generatePHash(imageBuffer: Buffer): Promise<string> {
 
     return hexHash;
   } catch (error) {
-    console.error('Failed to generate pHash:', error);
+    console.error('Failed to generate dHash:', error);
     return '0000000000000000'; // Return zero hash on error
+  }
+}
+
+/**
+ * Generate multi-resolution dHash for duplicate detection
+ * Resizes image to 3 standard sizes before computing dHash
+ * Returns object with 3 hashes
+ */
+export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise<{
+  hash800: string;
+  hash600: string;
+  hash1400: string;
+}> {
+  try {
+    // Generate dHash at 3 different resolutions
+    const [hash800, hash600, hash1400] = await Promise.all([
+      sharp(imageBuffer).resize(800, 800, { fit: 'inside' }).toBuffer().then(generateDHash),
+      sharp(imageBuffer).resize(600, 600, { fit: 'inside' }).toBuffer().then(generateDHash),
+      sharp(imageBuffer).resize(1400, 1400, { fit: 'inside' }).toBuffer().then(generateDHash),
+    ]);
+
+    return { hash800, hash600, hash1400 };
+  } catch (error) {
+    console.error('Failed to generate multi-resolution dHash:', error);
+    return {
+      hash800: '0000000000000000',
+      hash600: '0000000000000000',
+      hash1400: '0000000000000000'
+    };
   }
 }
 
@@ -150,12 +128,12 @@ export async function generatePHash(imageBuffer: Buffer): Promise<string> {
  * Generate a thumbnail for an image or video
  * For videos: tries first frame, then 1/3, then 2/3 to avoid black frames
  * Resizes so the largest dimension is THUMBNAIL_SIZE, preserving aspect ratio
- * Returns the dHash for duplicate detection
+ * Returns multi-resolution dHashes for duplicate detection
  */
 export async function generateThumbnail(
   filePath: string,
   fileHash: string
-): Promise<string> {
+): Promise<{ hash800: string; hash600: string; hash1400: string }> {
   try {
     const ext = path.extname(filePath).toLowerCase();
 
@@ -167,9 +145,9 @@ export async function generateThumbnail(
     // Check if thumbnail already exists
     try {
       await fs.access(outputPath);
-      // Thumbnail exists, generate pHash from it
+      // Thumbnail exists, generate multi-res dHash from it
       const thumbnailBuffer = await fs.readFile(outputPath);
-      return await generatePHash(thumbnailBuffer);
+      return await generateMultiResolutionDHash(thumbnailBuffer);
     } catch {
       // Doesn't exist, create it
     }
@@ -182,7 +160,11 @@ export async function generateThumbnail(
 
       if (duration <= 0) {
         console.error(`Invalid video duration for ${filePath}`);
-        return '0000000000000000'; // Return zero hash on error
+        return {
+          hash800: '0000000000000000',
+          hash600: '0000000000000000',
+          hash1400: '0000000000000000'
+        };
       }
 
       // Try frames at 0s, 1/3, and 2/3 through the video
@@ -219,8 +201,8 @@ export async function generateThumbnail(
       console.log(`Generated image thumbnail for: ${path.basename(filePath)}`);
     }
 
-    // Generate pHash before resizing (for duplicate detection)
-    const pHash = await generatePHash(imageBuffer);
+    // Generate multi-resolution dHash before resizing (for duplicate detection)
+    const hashes = await generateMultiResolutionDHash(imageBuffer);
 
     // Resize so largest dimension becomes THUMBNAIL_SIZE, preserving aspect ratio
     await sharp(imageBuffer)
@@ -231,10 +213,14 @@ export async function generateThumbnail(
       .jpeg({ quality: 85 })
       .toFile(outputPath);
 
-    return pHash;
+    return hashes;
   } catch (error) {
     console.error(`Failed to generate thumbnail for ${filePath}:`, error);
-    return '0000000000000000'; // Return zero hash on error
+    return {
+      hash800: '0000000000000000',
+      hash600: '0000000000000000',
+      hash1400: '0000000000000000'
+    };
   }
 }
 
