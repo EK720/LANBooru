@@ -11,7 +11,7 @@ const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.mp4', '.webm', '.mkv', 
  * Scan a folder for images and add them to the database
  */
 export async function scanFolder(folder: Folder): Promise<number> {
-  console.log(`Scanning folder: ${folder.path} (recursive: ${folder.recursive})`);
+  console.log(`Scanning folder: ${folder.path} (recursive: ${folder.recursive ? "true" : "false"})`);
 
   let addedCount = 0;
   const files = await findImageFiles(folder.path, folder.recursive);
@@ -94,35 +94,85 @@ async function processFile(filePath: string): Promise<boolean> {
       await deleteImage(existing.id);
     }
 
-    // Insert or update image
+    // Generate thumbnail and get dHash
+    const contentHash = await generateThumbnail(filePath, fileHash);
+
+    // Insert image first (we need the ID to compare with duplicates)
     const result = await execute(
       `INSERT INTO images
-        (file_path, filename, file_type, file_size, file_hash, width, height, artist, rating, source, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (file_path, filename, file_type, file_size, file_hash, content_hash, width, height, artist, rating, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         filePath,
         path.basename(filePath),
         path.extname(filePath).toLowerCase().substring(1), // Remove leading dot
         stats.size,
         fileHash,
+        contentHash,
         metadata.width || 0,
         metadata.height || 0,
         metadata.artist || null,
         metadata.rating || null,
         metadata.source || null,
-		metadata.date	|| new Date()
+        metadata.date || new Date()
       ]
     );
 
     const imageId = result.insertId;
 
-    // Add tags
+    // Add initial tags
     if (metadata.tags.length > 0) {
       await addTagsToImage(imageId, metadata.tags);
     }
 
-    // Generate thumbnail
-    await generateThumbnail(filePath, fileHash);
+    // Check for duplicates by content_hash
+    const duplicates = await query<Image>(
+      'SELECT id, width, height, file_path FROM images WHERE content_hash = ?',
+      [contentHash]
+    );
+
+    if (duplicates.length > 1) {
+      console.log(`Duplicate detected: ${duplicates.length} images with same content`);
+
+      // Find highest quality version (by resolution)
+      let bestImage = duplicates[0];
+      let bestResolution = bestImage.width * bestImage.height;
+
+      for (const img of duplicates.slice(1)) {
+        const resolution = img.width * img.height;
+        if (resolution > bestResolution) {
+          bestImage = img;
+          bestResolution = resolution;
+        }
+      }
+
+      console.log(`Best quality version: ID ${bestImage.id} (${bestImage.width}x${bestImage.height})`);
+
+      // Collect all tags from all duplicates
+      const allTags = new Set<string>();
+      for (const img of duplicates) {
+        const tags = await query<{ name: string }>(
+          `SELECT t.name FROM tags t
+           JOIN image_tags it ON t.id = it.tag_id
+           WHERE it.image_id = ?`,
+          [img.id]
+        );
+        tags.forEach(t => allTags.add(t.name));
+      }
+
+      // Add duplicate_image tag
+      allTags.add('duplicate_image');
+
+      // Apply merged tags to the best quality version
+      await addTagsToImage(bestImage.id, Array.from(allTags));
+
+      // For all other versions, just add duplicate_image tag
+      for (const img of duplicates) {
+        if (img.id !== bestImage.id) {
+          await addTagsToImage(img.id, ['duplicate_image']);
+        }
+      }
+    }
 
     console.log(`Added: ${path.basename(filePath)} (${metadata.tags.length} tags)`);
     return true;

@@ -47,14 +47,14 @@ router.get('/:id', async (req, res) => {
 
 /**
  * GET /api/images/:id/file
- * Serve the original image/video file
+ * Serve the original image/video file with proper filename
  */
 router.get('/:id/file', async (req, res) => {
   try {
     const { id } = req.params;
 
     const image = await queryOne<any>(
-      'SELECT file_path, file_type, filename FROM images WHERE id = ?',
+      'SELECT file_path, file_type, file_hash FROM images WHERE id = ?',
       [parseInt(id)]
     );
 
@@ -68,6 +68,10 @@ router.get('/:id/file', async (req, res) => {
     } catch {
       return res.status(404).json({ error: 'File not found on disk' });
     }
+
+    // Set filename as {hash}.{ext} for uniqueness
+    const filename = `${image.file_hash}.${image.file_type}`;
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
     // Send file
     res.sendFile(image.file_path);

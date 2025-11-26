@@ -117,7 +117,7 @@ router.delete('/:id', async (req, res) => {
     // Delete images where file_path starts with the folder path
     await execute(
       'DELETE FROM images WHERE file_path LIKE ?',
-      [folder.path + '%']
+      [folder.path + '/%']
     );
 
     console.log(`Deleted folder ${folder.path} and cleaned up associated images`);

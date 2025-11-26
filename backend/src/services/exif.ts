@@ -66,24 +66,15 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
       source = metadata.Description;
     }
 	
-	// Log all available date fields for analysis
-	const fileTimes = fs.statSync(filePath);
-	console.log(`\n=== Date fields for ${path.basename(filePath)} ===`);
-	console.log('EXIF Fields:');
-	console.log('  DateTimeOriginal:', metadata.DateTimeOriginal || 'N/A');
-	console.log('  CreateDate:', metadata.CreateDate || 'N/A');
-	console.log('  MediaCreateDate:', metadata.MediaCreateDate || 'N/A');
-	console.log('  FileModifyDate:', metadata.FileModifyDate || 'N/A');
-	console.log('  ModifyDate:', metadata.ModifyDate || 'N/A');
-	console.log('  DateCreated:', metadata.DateCreated || 'N/A');
-	console.log('Filesystem:');
-	console.log('  birthtime:', fileTimes.birthtime);
-	console.log('  mtime:', fileTimes.mtime);
-	console.log('  ctime:', fileTimes.ctime);
-
-	// For now, use filesystem mtime
-	if (fileTimes) {
-		date = fileTimes.mtime;
+	// Extract date: prioritize CreateDate, fallback to mtime
+	if (metadata.CreateDate) {
+		date = new Date(metadata.CreateDate);
+	} else {
+		// Fall back to filesystem modified time
+		const fileTimes = fs.statSync(filePath);
+		if (fileTimes) {
+			date = fileTimes.mtime;
+		}
 	}
 
     return {
