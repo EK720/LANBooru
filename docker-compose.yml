@@ -7,9 +7,9 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: booru
-      MYSQL_USER: booru
-      MYSQL_PASSWORD: boorupass
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
     networks:
@@ -37,6 +37,7 @@ services:
       SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES}
       MAX_RESULTS_PER_PAGE: ${MAX_RESULTS_PER_PAGE}
       THUMBNAIL_SIZE: ${THUMBNAIL_SIZE}
+      DUPLICATE_SCAN_ENABLED: ${DUPLICATE_SCAN_ENABLED}
     volumes:
       # Option 1: Mount your home directory to access all your images
       # This allows adding folders via web UI without restarting

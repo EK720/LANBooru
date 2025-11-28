@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { execute, query, queryOne } from '../database/connection';
 import { localhostOnly } from '../middleware/security';
 import { Folder } from '../types';
-import { scanFolder } from '../services/scanner';
+import { scanFolder, deleteImage } from '../services/scanner';
 
 const router = Router();
 
@@ -114,13 +114,18 @@ router.delete('/:id', async (req, res) => {
     }
 
     // Clean up images that were in this folder
-    // Delete images where file_path starts with the folder path
-    await execute(
-      'DELETE FROM images WHERE file_path LIKE ?',
+    // Get all image IDs where file_path starts with the folder path
+    const delImages = await query<{ id: number }>(
+      'SELECT id FROM images WHERE file_path LIKE ?',
       [folder.path + '/%']
     );
 
-    console.log(`Deleted folder ${folder.path} and cleaned up associated images`);
+    // Delete each image properly (handles thumbnails, tags, duplicate groups)
+    for (const delImage of delImages) {
+      await deleteImage(delImage.id);
+    }
+
+    console.log(`Deleted folder ${folder.path} and cleaned up ${delImages.length} images`);
 
     res.status(204).send();
   } catch (error) {

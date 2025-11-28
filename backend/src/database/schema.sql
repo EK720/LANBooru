@@ -58,3 +58,12 @@ CREATE TABLE IF NOT EXISTS image_tags (
     INDEX idx_tag_id (tag_id),
     INDEX idx_image_id (image_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Duplicate groups table (tracks which images are duplicates and their prime/best version)
+CREATE TABLE IF NOT EXISTS duplicate_groups (
+    image_id INT NOT NULL PRIMARY KEY,
+    prime_id INT NOT NULL,
+    FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE,
+    FOREIGN KEY (prime_id) REFERENCES images(id),
+    INDEX idx_prime_id (prime_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

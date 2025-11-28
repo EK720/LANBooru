@@ -59,46 +59,41 @@ async function isFrameBlack(frameBuffer: Buffer, threshold: number = 30): Promis
 }
 
 /**
- * Generate dHash (difference hash) for duplicate detection
- * Returns 64-bit hash as 16-character hex string
+ * Generate dHash from a buffer (already resized to target resolution)
+ * Uses BigInt bit operations for speed
  */
 async function generateDHash(imageBuffer: Buffer): Promise<string> {
   try {
-    // Resize to 9x8 (need 9 columns to compare 8 adjacent pairs)
     const { data } = await sharp(imageBuffer)
       .resize(9, 8, { fit: 'fill' })
       .grayscale()
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // Build hash by comparing adjacent horizontal pixels
-    let hash = '';
+    // Build hash using bit operations (much faster than string concat)
+    let hash = BigInt(0);
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
         const leftPixel = data[y * 9 + x];
         const rightPixel = data[y * 9 + x + 1];
-        hash += leftPixel < rightPixel ? '1' : '0';
+        if (leftPixel < rightPixel) {
+          hash |= BigInt(1) << BigInt(y * 8 + x);
+        }
       }
     }
 
-    // Convert 64-bit binary string to 16-character hex string
-    let hexHash = '';
-    for (let i = 0; i < 64; i += 4) {
-      const nibble = hash.substring(i, i + 4);
-      hexHash += parseInt(nibble, 2).toString(16);
-    }
-
-    return hexHash;
+    // Convert to 16-character hex string
+    return hash.toString(16).padStart(16, '0');
   } catch (error) {
     console.error('Failed to generate dHash:', error);
-    return '0000000000000000'; // Return zero hash on error
+    return '0000000000000000';
   }
 }
 
 /**
  * Generate multi-resolution dHash for duplicate detection
- * Resizes image to 3 standard sizes before computing dHash
- * Returns object with 3 hashes
+ * Optimized: decodes image once via clone(), uses BigInt for hash
+ * Note: Intermediate buffers required because Sharp's resize() overrides, doesn't chain
  */
 export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise<{
   hash800: string;
@@ -106,11 +101,22 @@ export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise
   hash1400: string;
 }> {
   try {
-    // Generate dHash at 3 different resolutions
+    // Create base sharp instance - decodes image ONCE
+    const baseImage = sharp(imageBuffer);
+
+    // Resize to 3 target sizes in parallel (clone() reuses decoded data)
+    // Must create intermediate buffers - Sharp's resize() overrides, doesn't chain
+    const [buffer800, buffer600, buffer1400] = await Promise.all([
+      baseImage.clone().resize(800, 800, { fit: 'inside' }).toBuffer(),
+      baseImage.clone().resize(600, 600, { fit: 'inside' }).toBuffer(),
+      baseImage.clone().resize(1400, 1400, { fit: 'inside' }).toBuffer(),
+    ]);
+
+    // Generate dHash from each resized buffer in parallel
     const [hash800, hash600, hash1400] = await Promise.all([
-      sharp(imageBuffer).resize(800, 800, { fit: 'inside' }).toBuffer().then(generateDHash),
-      sharp(imageBuffer).resize(600, 600, { fit: 'inside' }).toBuffer().then(generateDHash),
-      sharp(imageBuffer).resize(1400, 1400, { fit: 'inside' }).toBuffer().then(generateDHash),
+      generateDHash(buffer800),
+      generateDHash(buffer600),
+      generateDHash(buffer1400),
     ]);
 
     return { hash800, hash600, hash1400 };
