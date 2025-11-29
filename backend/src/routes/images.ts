@@ -33,9 +33,30 @@ router.get('/:id', async (req, res) => {
       [parseInt(id)]
     );
 
+    // Get duplicate info if this image is part of a duplicate group
+    const dupInfo = await queryOne<{ prime_id: number }>(
+      'SELECT prime_id FROM duplicate_groups WHERE image_id = ?',
+      [parseInt(id)]
+    );
+
+    let duplicates: ImageWithTags['duplicates'];
+    if (dupInfo) {
+      // Get all images in this duplicate group
+      const dupImages = await query<{ image_id: number }>(
+        'SELECT image_id FROM duplicate_groups WHERE prime_id = ? ORDER BY image_id',
+        [dupInfo.prime_id]
+      );
+      duplicates = {
+        prime_id: dupInfo.prime_id,
+        is_prime: dupInfo.prime_id === parseInt(id),
+        group: dupImages.map(d => d.image_id)
+      };
+    }
+
     const imageWithTags: ImageWithTags = {
       ...image,
-      tags: tags.map(t => t.name)
+      tags: tags.map(t => t.name),
+      duplicates
     };
 
     res.json(imageWithTags);

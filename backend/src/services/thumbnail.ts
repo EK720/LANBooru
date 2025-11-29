@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createHash } from 'crypto';
 import ffmpeg from 'fluent-ffmpeg';
+import { queryOne } from '../database/connection';
 
 // Single thumbnail size - largest dimension will be this size, aspect ratio preserved
 export const THUMBNAIL_SIZE = parseInt(process.env.THUMBNAIL_SIZE || '300');
@@ -151,9 +152,20 @@ export async function generateThumbnail(
     // Check if thumbnail already exists
     try {
       await fs.access(outputPath);
-      // Thumbnail exists, generate multi-res dHash from it
-      const thumbnailBuffer = await fs.readFile(outputPath);
-      return await generateMultiResolutionDHash(thumbnailBuffer);
+      // Thumbnail exists - an image with this file_hash is already in the DB
+      // Just return its content hashes instead of re-processing
+      const existing = await queryOne<{ content_hash_800: string; content_hash_600: string; content_hash_1400: string }>(
+        'SELECT content_hash_800, content_hash_600, content_hash_1400 FROM images WHERE file_hash = ? LIMIT 1',
+        [fileHash]
+      );
+      if (existing) {
+        return {
+          hash800: existing.content_hash_800,
+          hash600: existing.content_hash_600,
+          hash1400: existing.content_hash_1400
+        };
+      }
+      // Thumbnail exists but no DB entry (orphaned) - fall through to regenerate hashes
     } catch {
       // Doesn't exist, create it
     }

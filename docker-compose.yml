@@ -36,6 +36,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES}
       MAX_RESULTS_PER_PAGE: ${MAX_RESULTS_PER_PAGE}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX}
       THUMBNAIL_SIZE: ${THUMBNAIL_SIZE}
       DUPLICATE_SCAN_ENABLED: ${DUPLICATE_SCAN_ENABLED}
     volumes:
@@ -61,20 +62,20 @@ services:
       mysql:
         condition: service_healthy
 
-  #frontend:
-  #  build:
-  #    context: ./frontend
-  #    dockerfile: Dockerfile
-  #  container_name: booru-frontend
-  #  restart: unless-stopped
-  #  ports:
-  #    - "3000:80"
-  #  environment:
-  #    REACT_APP_API_URL: http://localhost:4000
-  #  networks:
-  #    - booru-network
-  #  depends_on:
-  #    - backend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: booru-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT}:80"
+    environment:
+      VITE_IMAGES_PER_PAGE: ${VITE_IMAGES_PER_PAGE}
+    networks:
+      - booru-network
+    depends_on:
+      - backend
 
 networks:
   booru-network:

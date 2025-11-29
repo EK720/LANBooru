@@ -30,13 +30,24 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Parse URL-enc
 app.use(addSecurityContext);
 
 // Rate limiting for API endpoints
-const limiter = rateLimit({
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '120');
+
+const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  max: RATE_LIMIT_MAX,
+  message: 'Too many requests from this IP, please try again later.',
+  skip: (req) => {
+    // Skip rate limiting for thumbnails and tag suggestions
+    // These get hit frequently during normal browsing
+    // Note: req.path doesn't include /api since middleware is mounted there
+    return (
+      req.path.match(/^\/images\/\d+\/thumbnail/) !== null ||
+      req.path === '/search/tags/suggest'
+    );
+  }
 });
 
-app.use('/api', limiter);
+app.use('/api', apiLimiter);
 
 // Health check
 app.get('/health', (req, res) => {

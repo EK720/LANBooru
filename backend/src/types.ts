@@ -52,8 +52,15 @@ export interface SearchResult {
   total_pages: number;
 }
 
+export interface DuplicateInfo {
+  prime_id: number;
+  is_prime: boolean;
+  group?: number[];  // All image IDs in the duplicate group
+}
+
 export interface ImageWithTags extends Image {
   tags: string[];
+  duplicates?: DuplicateInfo;
 }
 
 export interface ScanStats {

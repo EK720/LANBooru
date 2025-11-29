@@ -393,11 +393,11 @@ export async function searchImages(searchQuery: SearchQuery): Promise<SearchResu
 /**
  * Get tag suggestions for autocomplete
  */
-export async function suggestTags(prefix: string, limit: number = 20): Promise<string[]> {
-  const tags = await query<{ name: string }>(
-    'SELECT name FROM tags WHERE name LIKE ? ORDER BY count DESC, name ASC LIMIT ?',
+export async function suggestTags(prefix: string, limit: number = 20): Promise<{ name: string; count: number }[]> {
+  const tags = await query<{ name: string; count: number }>(
+    'SELECT name, count FROM tags WHERE name LIKE ? ORDER BY count DESC, name ASC LIMIT ?',
     [`${prefix}%`, limit]
   );
 
-  return tags.map(t => t.name);
+  return tags;
 }

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { execute, query, queryOne } from '../database/connection';
 import { localhostOnly } from '../middleware/security';
 import { Folder } from '../types';
-import { scanFolder, deleteImage } from '../services/scanner';
+import { scanFolder, deleteImage, cleanupDeletedFiles } from '../services/scanner';
 
 const router = Router();
 
@@ -190,10 +190,15 @@ router.post('/:id/scan', async (req, res) => {
       return res.status(404).json({ error: 'Folder not found' });
     }
 
-    // Trigger scan in background
-    scanFolder(folder).catch(error => {
-      console.error(`Manual scan failed for ${folder.path}:`, error);
-    });
+    // Trigger scan and cleanup in background
+    (async () => {
+      try {
+        await scanFolder(folder);
+        await cleanupDeletedFiles(folder.path);
+      } catch (error) {
+        console.error(`Manual scan failed for ${folder.path}:`, error);
+      }
+    })();
 
     res.json({ message: 'Scan started' });
   } catch (error) {

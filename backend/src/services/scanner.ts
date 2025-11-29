@@ -422,8 +422,15 @@ export async function deleteImage(imageId: number): Promise<void> {
     }
   }
 
-  // Delete thumbnail
-  await deleteThumbnail(image.file_hash);
+  // Only delete thumbnail if no other images share this file_hash
+  const otherWithSameHash = await queryOne<{ id: number }>(
+    'SELECT id FROM images WHERE file_hash = ? AND id != ? LIMIT 1',
+    [image.file_hash, imageId]
+  );
+
+  if (!otherWithSameHash) {
+    await deleteThumbnail(image.file_hash);
+  }
 }
 
 // Scan all enabled folders (periodic scan - skips if manual scan running)
@@ -451,9 +458,21 @@ export async function scanAllFolders(): Promise<void> {
 
 /**
  * Clean up database entries for files that no longer exist
+ * @param folderPath Optional - if provided, only clean up files from this folder
  */
-export async function cleanupDeletedFiles(): Promise<number> {
-  const images = await query<Image>('SELECT id, file_path, file_hash FROM images');
+export async function cleanupDeletedFiles(folderPath?: string): Promise<number> {
+  let images: Image[];
+
+  if (folderPath) {
+    // Only check files from the specified folder
+    images = await query<Image>(
+      'SELECT id, file_path, file_hash FROM images WHERE file_path LIKE ?',
+      [`${folderPath}%`]
+    );
+  } else {
+    images = await query<Image>('SELECT id, file_path, file_hash FROM images');
+  }
+
   let deletedCount = 0;
 
   for (const image of images) {
