@@ -11,16 +11,3 @@ body {
   min-height: 100vh;
 }
 
-/* Masonry grid styles */
-.masonry-grid {
-  display: flex;
-  width: 100%;
-  gap: 8px;
-}
-
-.masonry-grid-column {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background-clip: padding-box;
-}

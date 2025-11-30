@@ -57,8 +57,69 @@ export default function HomePage() {
     }
   }, [setSearchParams]);
 
-  // Parse query into tags for display
-  const queryTags = query.split(/\s+/).filter(Boolean);
+  // Parse query into tokens for display (handles groups like {tag1 tag2})
+  type TagWithPrefix = { name: string; prefix: string };
+  type QueryToken = { type: 'tag'; value: string; prefix: string } | { type: 'group'; tags: TagWithPrefix[]; prefix: string };
+
+  const parseQueryTokens = (q: string): QueryToken[] => {
+    const tokens: QueryToken[] = [];
+    let i = 0;
+
+    while (i < q.length) {
+      // Skip whitespace
+      while (i < q.length && /\s/.test(q[i])) i++;
+      if (i >= q.length) break;
+
+      // Check for prefix (- or ~)
+      let prefix = '';
+      if (q[i] === '-' || q[i] === '~') {
+        prefix = q[i];
+        i++;
+      }
+
+      // Check for group
+      if (q[i] === '{') {
+        i++; // skip opening {
+        const groupStart = i;
+        // Handle nested braces by counting depth
+        let depth = 1;
+        while (i < q.length && depth > 0) {
+          if (q[i] === '{') depth++;
+          else if (q[i] === '}') depth--;
+          if (depth > 0) i++;
+        }
+        const groupContent = q.slice(groupStart, i);
+        i++; // skip closing }
+        // Split on whitespace and parse each tag's prefix
+        const rawTags = groupContent.split(/\s+/).filter(t => t && t !== '{' && t !== '}');
+        const groupTags: TagWithPrefix[] = rawTags.map(t => {
+          let tagPrefix = '';
+          let tagName = t;
+          // Extract prefix from individual tag
+          if (t.startsWith('-') || t.startsWith('~')) {
+            tagPrefix = t[0];
+            tagName = t.slice(1);
+          }
+          return { name: tagName, prefix: tagPrefix };
+        }).filter(t => t.name); // Filter out empty names
+        if (groupTags.length > 0) {
+          tokens.push({ type: 'group', tags: groupTags, prefix });
+        }
+      } else {
+        // Regular tag
+        const tagStart = i;
+        while (i < q.length && !/\s/.test(q[i]) && q[i] !== '{' && q[i] !== '}') i++;
+        const tag = q.slice(tagStart, i);
+        if (tag) {
+          tokens.push({ type: 'tag', value: tag, prefix });
+        }
+      }
+    }
+
+    return tokens;
+  };
+
+  const queryTokens = parseQueryTokens(query);
 
   return (
     <Box sx={{ minHeight: '100%' }}>
@@ -127,15 +188,49 @@ export default function HomePage() {
               <Typography variant="body2" color="text.secondary">
                 Searching:
               </Typography>
-              {queryTags.map((tag, i) => (
-                <Chip
-                  key={i}
-                  label={tag}
-                  size="small"
-                  color={tag.startsWith('-') ? 'error' : tag.startsWith('~') ? 'warning' : 'primary'}
-                  variant="outlined"
-                />
-              ))}
+              {queryTokens.map((token, i) => {
+                const getColor = (prefix: string) =>
+                  prefix === '-' ? 'error' : prefix === '~' ? 'warning' : 'primary';
+
+                if (token.type === 'group') {
+                  return (
+                    <Box
+                      key={i}
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        border: 2,
+                        borderColor: getColor(token.prefix) + '.main',
+                        borderRadius: 2,
+                        px: 0.75,
+                        py: 0.25,
+                        bgcolor: 'action.hover',
+                      }}
+                    >
+                      {token.tags.map((tag, j) => (
+                        <Chip
+                          key={j}
+                          label={tag.name}
+                          size="small"
+                          color={getColor(tag.prefix)}
+                          variant="outlined"
+                        />
+                      ))}
+                    </Box>
+                  );
+                }
+
+                return (
+                  <Chip
+                    key={i}
+                    label={token.value}
+                    size="small"
+                    color={getColor(token.prefix)}
+                    variant="outlined"
+                  />
+                );
+              })}
               <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
                 ({totalCount.toLocaleString()} results)
               </Typography>

@@ -1,6 +1,5 @@
-import { useRef, useState, useEffect, useLayoutEffect } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import { Box, CircularProgress, Typography } from '@mui/material';
-import Masonry from 'react-masonry-css';
 import ImageCard from './ImageCard';
 import type { ImageWithTags } from '../../types/api';
 
@@ -51,6 +50,46 @@ function calculateColumns(containerWidth: number): { cols: number; colWidth: num
   }
 
   return { cols, colWidth };
+}
+
+/**
+ * Distribute images across columns by placing each in the shortest column.
+ * This creates balanced columns unlike CSS columns which fill top-to-bottom.
+ */
+function distributeToColumns(images: ImageWithTags[], numColumns: number, columnWidth: number): ImageWithTags[][] {
+  if (numColumns <= 0 || images.length === 0) {
+    return Array(Math.max(1, numColumns)).fill([]);
+  }
+
+  // Initialize columns and their heights
+  const columns: ImageWithTags[][] = Array.from({ length: numColumns }, () => []);
+  const columnHeights: number[] = Array(numColumns).fill(0);
+
+  // Place each image in the shortest column
+  for (const image of images) {
+    // Find the shortest column
+    let shortestIndex = 0;
+    let shortestHeight = columnHeights[0];
+    for (let i = 1; i < numColumns; i++) {
+      if (columnHeights[i] < shortestHeight) {
+        shortestHeight = columnHeights[i];
+        shortestIndex = i;
+      }
+    }
+
+    // Add image to shortest column
+    columns[shortestIndex].push(image);
+
+    // Update column height (use aspect ratio to estimate height)
+    // Fallback to square aspect ratio if dimensions are invalid
+    const width = image.width || 1;
+    const height = image.height || 1;
+    const aspectRatio = width / height;
+    const imageHeight = columnWidth / aspectRatio;
+    columnHeights[shortestIndex] += imageHeight + GAP; // Add gap between images
+  }
+
+  return columns;
 }
 
 // Get initial columns based on window width (for SSR/initial render)
@@ -134,6 +173,12 @@ export default function MasonryGallery({
     };
   }, [hasMore, isLoading, isFetchingMore, onLoadMore]);
 
+  // Distribute images to columns for balanced layout
+  const columns = useMemo(
+    () => distributeToColumns(images, numColumns, columnWidth),
+    [images, numColumns, columnWidth]
+  );
+
   if (isLoading && images.length === 0) {
     return (
       <Box
@@ -166,20 +211,35 @@ export default function MasonryGallery({
 
   return (
     <Box ref={containerRef} sx={{ width: '100%' }}>
-      <Masonry
-        breakpointCols={numColumns}
-        className="masonry-grid"
-        columnClassName="masonry-grid-column"
+      {/* Custom balanced masonry layout */}
+      <Box
+        sx={{
+          display: 'flex',
+          gap: `${GAP}px`,
+          width: '100%',
+        }}
       >
-        {images.map((image) => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            columnWidth={columnWidth}
-            onNavigate={onNavigate}
-          />
+        {columns.map((columnImages, colIndex) => (
+          <Box
+            key={colIndex}
+            sx={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: `${GAP}px`,
+            }}
+          >
+            {columnImages.map((image) => (
+              <ImageCard
+                key={image.id}
+                image={image}
+                columnWidth={columnWidth}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </Box>
         ))}
-      </Masonry>
+      </Box>
 
       {/* Load more trigger */}
       <Box

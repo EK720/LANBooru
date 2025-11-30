@@ -14,8 +14,10 @@ export default function ImageCard({ image, columnWidth, onNavigate }: ImageCardP
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
-  // Calculate aspect ratio for proper sizing
-  const aspectRatio = image.width / image.height;
+  // Calculate aspect ratio for proper sizing (fallback to square if dimensions invalid)
+  const width = image.width || 1;
+  const height = image.height || 1;
+  const aspectRatio = width / height;
   const displayHeight = columnWidth / aspectRatio;
 
   // Calculate optimal thumbnail size based on column width and DPR
@@ -42,7 +44,6 @@ export default function ImageCard({ image, columnWidth, onNavigate }: ImageCardP
           bgcolor: 'background.paper',
           borderRadius: 1,
           overflow: 'hidden',
-          mb: 1,
           transition: 'transform 0.15s ease, box-shadow 0.15s ease',
           '&:hover': {
             transform: 'translateY(-2px)',
