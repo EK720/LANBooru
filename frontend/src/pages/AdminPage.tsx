@@ -3,10 +3,10 @@ import {
   Box,
   Typography,
   Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
   IconButton,
   Switch,
   TextField,
@@ -84,7 +84,7 @@ export default function AdminPage() {
   };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
+    <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
         Admin Settings
       </Typography>
@@ -133,9 +133,9 @@ export default function AdminPage() {
         </Stack>
       </Paper>
 
-      {/* Folder list */}
-      <Paper>
-        <Typography variant="h6" sx={{ p: 2, pb: 0 }}>
+      {/* Folder grid */}
+      <Box>
+        <Typography variant="h6" sx={{ mb: 2 }}>
           Monitored Folders
         </Typography>
 
@@ -144,34 +144,42 @@ export default function AdminPage() {
             <CircularProgress />
           </Box>
         ) : folders && folders.length > 0 ? (
-          <List>
+          <Grid container spacing={2}>
             {folders.map((folder: Folder) => (
-              <ListItem
-                key={folder.id}
-                divider
-                sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 2 }}
-              >
-                <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <ListItemText
-                    primary={folder.path}
-                    secondary={
-                      <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                        <Chip
-                          label={folder.do_recurse ? 'Recursive' : 'Non-recursive'}
-                          size="small"
-                          variant="outlined"
-                        />
-                        <Chip
-                          label={folder.enabled ? 'Enabled' : 'Disabled'}
-                          size="small"
-                          color={folder.enabled ? 'success' : 'default'}
-                          variant="outlined"
-                        />
-                      </Stack>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <Stack direction="row" spacing={1}>
+              <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={folder.id}>
+                <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <CardContent sx={{ flex: 1 }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        wordBreak: 'break-all',
+                        mb: 1,
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {folder.path}
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                      <Chip
+                        label={folder.do_recurse ? 'Recursive' : 'Non-recursive'}
+                        size="small"
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={folder.enabled ? 'Enabled' : 'Disabled'}
+                        size="small"
+                        color={folder.enabled ? 'success' : 'default'}
+                        variant="outlined"
+                      />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      Last scanned: {formatDate(folder.last_scanned_at)}
+                    </Typography>
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 1 }}>
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Typography variant="caption" color="text.secondary">Enabled</Typography>
                       <Switch
                         checked={folder.enabled}
                         onChange={(e) =>
@@ -182,12 +190,15 @@ export default function AdminPage() {
                         }
                         size="small"
                       />
+                    </Stack>
+                    <Stack direction="row" spacing={0.5}>
                       <IconButton
                         onClick={() => scanMutation.mutate(folder.id)}
                         disabled={scanMutation.isPending}
                         title="Scan now"
+                        size="small"
                       >
-                        <ScanIcon />
+                        <ScanIcon fontSize="small" />
                       </IconButton>
                       <IconButton
                         onClick={() => {
@@ -197,26 +208,24 @@ export default function AdminPage() {
                         }}
                         color="error"
                         title="Delete folder"
+                        size="small"
                       >
-                        <DeleteIcon />
+                        <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Stack>
-                  </ListItemSecondaryAction>
-                </Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                  Last scanned: {formatDate(folder.last_scanned_at)}
-                </Typography>
-              </ListItem>
+                  </CardActions>
+                </Card>
+              </Grid>
             ))}
-          </List>
+          </Grid>
         ) : (
-          <Box sx={{ p: 4, textAlign: 'center' }}>
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
             <Typography color="text.secondary">
               No folders configured. Add a folder above to get started.
             </Typography>
-          </Box>
+          </Paper>
         )}
-      </Paper>
+      </Box>
     </Box>
   );
 }

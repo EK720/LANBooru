@@ -333,9 +333,9 @@ export async function searchImages(searchQuery: SearchQuery): Promise<SearchResu
   }
 
   // Build ORDER BY clause
-  let orderBy = 'images.created_at DESC';
+  let orderBy = 'images.created_at DESC, images.id DESC';
   if (sort === 'date_asc') {
-    orderBy = 'images.created_at ASC';
+    orderBy = 'images.created_at ASC, images.id ASC';
   } else if (sort === 'random') {
     orderBy = 'RAND()';
   }

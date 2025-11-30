@@ -299,9 +299,9 @@ async function processFile(filePath: string): Promise<boolean> {
 async function addTagsToImage(imageId: number, tagNames: string[]): Promise<void> {
   await transaction(async (conn) => {
     for (const tagName of tagNames) {
-      // Insert tag if it doesn't exist
+      // Insert tag if it doesn't exist (start at count 0)
       await conn.query(
-        'INSERT INTO tags (name, count) VALUES (?, 1) ON DUPLICATE KEY UPDATE count = count + 1',
+        'INSERT IGNORE INTO tags (name, count) VALUES (?, 0)',
         [tagName]
       );
 
@@ -314,11 +314,16 @@ async function addTagsToImage(imageId: number, tagNames: string[]): Promise<void
       if (tagRows.length > 0) {
         const tagId = tagRows[0].id;
 
-        // Link image to tag
-        await conn.query(
+        // Link image to tag (only if not already linked)
+        const [result] = await conn.query<any>(
           'INSERT IGNORE INTO image_tags (image_id, tag_id) VALUES (?, ?)',
           [imageId, tagId]
         );
+
+        // Only increment count if a new relationship was created
+        if (result.affectedRows > 0) {
+          await conn.query('UPDATE tags SET count = count + 1 WHERE id = ?', [tagId]);
+        }
       }
     }
   });
