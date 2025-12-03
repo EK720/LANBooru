@@ -1,6 +1,9 @@
 import { Router } from 'express';
-import { query, queryOne } from '../database/connection';
+import { query, queryOne, transaction } from '../database/connection';
 import { getThumbnailPath, resizeThumbnail } from '../services/thumbnail';
+import { deleteImage } from '../services/scanner';
+import { writeTagsToFile } from '../services/exif';
+import { requireEditPassword } from '../middleware/security';
 import { ImageWithTags } from '../types';
 import fs from 'fs/promises';
 
@@ -145,6 +148,130 @@ router.get('/:id/thumbnail', async (req, res) => {
   } catch (error) {
     console.error('Failed to serve thumbnail:', error);
     res.status(500).json({ error: 'Failed to serve thumbnail' });
+  }
+});
+
+/**
+ * PATCH /api/images/:id/tags
+ * Update tags for an image (requires edit password)
+ * Body: { tags: string[] }
+ * Efficiently updates only changed tags in DB, then writes to file
+ */
+router.patch('/:id/tags', requireEditPassword, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tags } = req.body;
+
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ success: false, error: 'Tags must be an array' });
+    }
+
+    const imageId = parseInt(id);
+    const image = await queryOne<{ file_path: string }>('SELECT file_path FROM images WHERE id = ?', [imageId]);
+
+    if (!image) {
+      return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+
+    // Normalize tags: trim, lowercase, remove empty
+    const newTags = new Set(
+      tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0)
+    );
+
+    // Get existing tags
+    const existingTagRows = await query<{ name: string }>(
+      `SELECT t.name FROM tags t
+       JOIN image_tags it ON t.id = it.tag_id
+       WHERE it.image_id = ?`,
+      [imageId]
+    );
+    const existingTags = new Set(existingTagRows.map(t => t.name));
+
+    // Calculate diff
+    const tagsToAdd = [...newTags].filter(t => !existingTags.has(t));
+    const tagsToRemove = [...existingTags].filter(t => !newTags.has(t));
+
+    // Only run transaction if there are changes
+    if (tagsToAdd.length > 0 || tagsToRemove.length > 0) {
+      await transaction(async (conn) => {
+        // Remove tags that were deleted
+        for (const tagName of tagsToRemove) {
+          const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
+          if (tagRows.length > 0) {
+            const tagId = tagRows[0].id;
+            await conn.query('DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?', [imageId, tagId]);
+            await conn.query('UPDATE tags SET count = count - 1 WHERE id = ?', [tagId]);
+            await conn.query('DELETE FROM tags WHERE id = ? AND count <= 0', [tagId]);
+          }
+        }
+
+        // Add new tags
+        for (const tagName of tagsToAdd) {
+          await conn.query('INSERT IGNORE INTO tags (name, count) VALUES (?, 0)', [tagName]);
+          const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
+          if (tagRows.length > 0) {
+            const tagId = tagRows[0].id;
+            await conn.query('INSERT INTO image_tags (image_id, tag_id) VALUES (?, ?)', [imageId, tagId]);
+            await conn.query('UPDATE tags SET count = count + 1 WHERE id = ?', [tagId]);
+          }
+        }
+      });
+    }
+
+    // Write tags to file (filters out internal tags like duplicate_image)
+    const finalTags = [...newTags];
+    try {
+      await writeTagsToFile(image.file_path, finalTags);
+    } catch (fileError) {
+      console.error('Failed to write tags to file:', fileError);
+      // Don't fail the request, DB is already updated
+    }
+
+    res.json({ success: true, tags: finalTags });
+  } catch (error) {
+    console.error('Failed to update tags:', error);
+    res.status(500).json({ success: false, error: 'Failed to update tags' });
+  }
+});
+
+/**
+ * DELETE /api/images/:id
+ * Delete an image (requires edit password)
+ * Query params: deleteFile=true to also delete the file from disk (default: true)
+ */
+router.delete('/:id', requireEditPassword, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const shouldDeleteFile = req.query.deleteFile !== 'false';
+
+    const imageId = parseInt(id);
+    const image = await queryOne<{ file_path: string }>(
+      'SELECT file_path FROM images WHERE id = ?',
+      [imageId]
+    );
+
+    if (!image) {
+      return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+
+    // Use existing deleteImage function for clean DB removal
+    await deleteImage(imageId);
+
+    // Optionally delete the actual file
+    if (shouldDeleteFile) {
+      try {
+        await fs.unlink(image.file_path);
+        console.log(`Deleted file: ${image.file_path}`);
+      } catch (unlinkError) {
+        console.error(`Failed to delete file ${image.file_path}:`, unlinkError);
+        // Don't fail the request, DB entry is already deleted
+      }
+    }
+
+    res.json({ success: true, fileDeleted: shouldDeleteFile });
+  } catch (error) {
+    console.error('Failed to delete image:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete image' });
   }
 });
 

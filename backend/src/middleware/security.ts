@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 
+const EDIT_PASSWORD = process.env.EDIT_PASSWORD || 'alter';
+const REQUIRE_EDIT_PASSWORD = process.env.REQUIRE_EDIT_PASSWORD !== 'false';
+
 /**
  * Check if request is from localhost
  *
@@ -40,4 +43,35 @@ export function localhostOnly(req: Request, res: Response, next: NextFunction) {
 export function addSecurityContext(req: Request, res: Response, next: NextFunction) {
   (req as any).isLocalhost = isLocalhost(req);
   next();
+}
+
+/**
+ * Middleware to require edit password for protected routes.
+ * Password is sent via X-Edit-Password header.
+ * Default password is 'alter' if EDIT_PASSWORD env var is not set.
+ * Can be disabled entirely by setting REQUIRE_EDIT_PASSWORD=false.
+ */
+export function requireEditPassword(req: Request, res: Response, next: NextFunction) {
+  // Skip password check if disabled
+  if (!REQUIRE_EDIT_PASSWORD) {
+    return next();
+  }
+
+  const providedPassword = req.headers['x-edit-password'];
+
+  if (!providedPassword || providedPassword !== EDIT_PASSWORD) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Invalid or missing edit password'
+    });
+  }
+
+  next();
+}
+
+/**
+ * Check if edit password is required
+ */
+export function isEditPasswordRequired(): boolean {
+  return REQUIRE_EDIT_PASSWORD;
 }

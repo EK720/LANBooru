@@ -39,21 +39,23 @@ services:
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX}
       THUMBNAIL_SIZE: ${THUMBNAIL_SIZE}
       DUPLICATE_SCAN_ENABLED: ${DUPLICATE_SCAN_ENABLED}
+      REQUIRE_EDIT_PASSWORD: ${REQUIRE_EDIT_PASSWORD}
+      EDIT_PASSWORD: ${EDIT_PASSWORD}
     volumes:
       # Option 1: Mount your home directory to access all your images
       # This allows adding folders via web UI without restarting
-      # - ${HOME}:/host:ro
+      # - ${HOME}:/host:rw
 
       # Option 2: For maximum flexibility, mount entire filesystem (Linux/Mac)
       # Uncomment this and comment out the HOME mount above if needed
-      # - /:/host:ro
+      # - /:/host:rw
 
       # Option 2a: For Windows (if using WSL, use /mnt/c for C: drive)
-      - C:\:/host:ro
+      - C:\:/host:rw
 
       # Option 3: Mount each image location individually for security/access control reasons
-      # - /path/to/your/images:/host/images:ro
-	    # - /another/path:/host/more-images:ro
+      # - /path/to/your/images:/host/images:rw
+	    # - /another/path:/host/more-images:rw
 
       - thumbnail-data:${THUMBNAIL_DIR}
     networks:

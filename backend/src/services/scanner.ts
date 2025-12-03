@@ -12,7 +12,7 @@ console.log(`Duplicate scan running? ${DUPLICATE_SCAN_ENABLED ? "true" : "false"
 
 // Global scan lock to prevent concurrent scans
 let isScanningInProgress = false;
-let scanLockResolve: (() => void) | null = null;
+const scanQueue: (() => void)[] = [];
 
 // Acquire scan lock, waiting if necessary
 async function acquireScanLock(wait: boolean = true): Promise<boolean> {
@@ -25,10 +25,10 @@ async function acquireScanLock(wait: boolean = true): Promise<boolean> {
     return false; // Don't wait, just skip
   }
 
-  // Wait for lock to be released
-  console.log('Waiting for ongoing scan to complete...');
+  // Wait for lock to be released - add to queue
+  console.log(`Waiting for ongoing scan to complete... (${scanQueue.length + 1} in queue)`);
   await new Promise<void>(resolve => {
-    scanLockResolve = resolve;
+    scanQueue.push(resolve);
   });
 
   isScanningInProgress = true;
@@ -36,14 +36,13 @@ async function acquireScanLock(wait: boolean = true): Promise<boolean> {
 }
 
 /**
- * Release scan lock
+ * Release scan lock and notify next waiter in queue
  */
 function releaseScanLock(): void {
   isScanningInProgress = false;
-  if (scanLockResolve) {
-    const resolve = scanLockResolve;
-    scanLockResolve = null;
-    resolve();
+  if (scanQueue.length > 0) {
+    const nextResolve = scanQueue.shift()!;
+    nextResolve();
   }
 }
 
@@ -61,10 +60,10 @@ export async function scanFolder(folder: Folder, waitForLock: boolean = true): P
   }
 
   try {
-    console.log(`Scanning folder: ${folder.path} (recursive: ${folder.recursive ? "true" : "false"})`);
+    console.log(`Scanning folder: ${folder.path} (recursive: ${folder.do_recurse ? "true" : "false"})`);
 
     let addedCount = 0;
-    const files = await findImageFiles(folder.path, folder.recursive);
+    const files = await findImageFiles(folder.path, folder.do_recurse);
 
     for (const filePath of files) {
       try {
@@ -125,18 +124,27 @@ async function processFile(filePath: string): Promise<boolean> {
     const stats = await fs.stat(filePath);
     if (!stats.isFile()) return false;
 
-    // Calculate file hash
-    const fileHash = await calculateFileHash(filePath);
-
     // Check if image already exists in database
     const existing = await queryOne<Image>(
-      'SELECT id, file_hash, updated_at FROM images WHERE file_path = ?',
+      'SELECT id, file_hash, file_size FROM images WHERE file_path = ?',
       [filePath]
     );
 
-    // If exists and hash matches, skip
+    // Quick check: if file exists in DB with same size, skip (no hash needed)
+    // This makes periodic scans much faster for unchanged files
+    if (existing && existing.file_size === stats.size) {
+      return false; // Not added (unchanged)
+    }
+
+    // Calculate file hash (only for new or changed files)
+    const fileHash = await calculateFileHash(filePath);
+
+    // Double-check with hash if file existed but size changed
     if (existing && existing.file_hash === fileHash) {
-      return false; // Not added (already exists)
+      // Size changed but hash same (unlikely, but possible with metadata changes)
+      // Update the file_size in DB
+      await execute('UPDATE images SET file_size = ? WHERE id = ?', [stats.size, existing.id]);
+      return false;
     }
 
     // Extract metadata
@@ -295,6 +303,21 @@ async function processFile(filePath: string): Promise<boolean> {
   }
 }
 
+// Remove a tag from an image
+async function removeTagFromImage(imageId: number, tagName: string): Promise<void> {
+  await transaction(async (conn) => {
+    const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
+    if (tagRows.length > 0) {
+      const tagId = tagRows[0].id;
+      const [result] = await conn.query<any>('DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?', [imageId, tagId]);
+      if (result.affectedRows > 0) {
+        await conn.query('UPDATE tags SET count = count - 1 WHERE id = ?', [tagId]);
+        await conn.query('DELETE FROM tags WHERE id = ? AND count <= 0', [tagId]);
+      }
+    }
+  });
+}
+
 // Add tags to an image
 async function addTagsToImage(imageId: number, tagNames: string[]): Promise<void> {
   await transaction(async (conn) => {
@@ -371,13 +394,18 @@ export async function deleteImage(imageId: number): Promise<void> {
       );
     } else {
       // Only 1 member remains: the prime itself which is getting removed
-	  // Or, 2 members remain: One is the prime, and one will no longer be a duplicate once the prime is gone.
-	  // Either way they should be removed.
-      console.log(`Removing last duplicate ID ${groupMemberIds[0].image_id} from group`);
+      // Or, 2 members remain: One is the prime, and one will no longer be a duplicate once the prime is gone.
+      // Either way they should be removed.
       await execute(
         'DELETE FROM duplicate_groups WHERE prime_id = ?',
         [imageId]
       );
+	  
+      // Remove duplicate_image tag from remaining member (if any)
+	  const remainingMemberId = groupMemberIds.find(m => m.image_id !== imageId)?.image_id;
+      if (remainingMemberId) {
+        await removeTagFromImage(remainingMemberId, 'duplicate_image');
+      }
     }
   } else {
     // image isn't a prime duplicate, get its prime ID to check for orphaned prime after deletion
@@ -424,6 +452,8 @@ export async function deleteImage(imageId: number): Promise<void> {
         'DELETE FROM duplicate_groups WHERE prime_id = ?',
         [nonPrimeEntry.prime_id]
       );
+      // Remove duplicate_image tag from the orphaned prime
+      await removeTagFromImage(nonPrimeEntry.prime_id, 'duplicate_image');
     }
   }
 

@@ -99,6 +99,83 @@ export async function scanFolder(id: number): Promise<void> {
   });
 }
 
+// Edit password management
+let editPassword: string | null = null;
+
+export function setEditPassword(password: string) {
+  editPassword = password;
+  sessionStorage.setItem('edit-password', password);
+}
+
+export function getEditPassword(): string | null {
+  if (!editPassword) {
+    editPassword = sessionStorage.getItem('edit-password');
+  }
+  return editPassword;
+}
+
+export function clearEditPassword() {
+  editPassword = null;
+  sessionStorage.removeItem('edit-password');
+}
+
+// Update image tags (may require edit password depending on server config)
+export async function updateImageTags(id: number, tags: string[]): Promise<{ success: boolean; tags: string[] }> {
+  const password = getEditPassword();
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (password) {
+    headers['X-Edit-Password'] = password;
+  }
+
+  const response = await fetch(`${API_BASE}/images/${id}/tags`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ tags }),
+  });
+
+  if (response.status === 401) {
+    clearEditPassword();
+    throw new Error('Invalid password');
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Delete image (may require edit password depending on server config)
+export async function deleteImageById(id: number, deleteFile: boolean = true): Promise<{ success: boolean; fileDeleted: boolean }> {
+  const password = getEditPassword();
+
+  const headers: Record<string, string> = {};
+  if (password) {
+    headers['X-Edit-Password'] = password;
+  }
+
+  const response = await fetch(`${API_BASE}/images/${id}?deleteFile=${deleteFile}`, {
+    method: 'DELETE',
+    headers,
+  });
+
+  if (response.status === 401) {
+    clearEditPassword();
+    throw new Error('Invalid password');
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 // Calculate optimal thumbnail size based on viewport and columns
 export function calculateThumbnailSize(columnWidth: number): number {
   const dpr = window.devicePixelRatio || 1;

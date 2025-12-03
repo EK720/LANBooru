@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { path, recursive = true } = req.body;
+    const { path, do_recurse = true } = req.body;
 
     if (!path || typeof path !== 'string') {
       console.log('Path validation failed - path:', path, 'type:', typeof path);
@@ -64,13 +64,13 @@ router.post('/', async (req, res) => {
     // Insert folder
     const result = await execute(
       'INSERT INTO folders (path, do_recurse, enabled) VALUES (?, ?, TRUE)',
-      [path, recursive]
+      [path, do_recurse]
     );
 
     const folder: Folder = {
       id: result.insertId,
       path,
-      recursive,
+      do_recurse,
       enabled: true,
       created_at: new Date()
     };
@@ -141,14 +141,14 @@ router.delete('/:id', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { recursive, enabled } = req.body;
+    const { do_recurse, enabled } = req.body;
 
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (typeof recursive === 'boolean') {
-      updates.push('recursive = ?');
-      params.push(recursive);
+    if (typeof do_recurse === 'boolean') {
+      updates.push('do_recurse = ?');
+      params.push(do_recurse);
     }
 
     if (typeof enabled === 'boolean') {

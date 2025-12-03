@@ -106,6 +106,49 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
   }
 }
 
+// Internal/meta tags that should not be written to files
+const INTERNAL_TAGS = ['duplicate_image'];
+
+/**
+ * Write tags to image/video file metadata
+ * Filters out internal tags like 'duplicate_image'
+ *
+ * JPEG: Writes to XPKeywords field (semicolon-separated)
+ * Video: Writes to Genre field (semicolon-separated)
+ * PNG/WebP: Writes to XMP Subject field
+ */
+export async function writeTagsToFile(filePath: string, tags: string[]): Promise<void> {
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+
+    // Filter out internal tags
+    const writableTags = tags.filter(t => !INTERNAL_TAGS.includes(t));
+    const tagString = writableTags.join(';');
+
+    if (ext === '.jpg' || ext === '.jpeg') {
+      // JPEG: Write to XPKeywords
+      await exiftool.write(filePath, {
+        XPKeywords: tagString
+      }, ['-overwrite_original']);
+    } else if (ext === '.mp4' || ext === '.webm' || ext === '.mkv') {
+      // Video: Write to Genre field
+      await exiftool.write(filePath, {
+        Genre: tagString
+      } as any, ['-overwrite_original']);
+    } else if (ext === '.png' || ext === '.webp') {
+      // PNG/WebP: Write to XMP Subject
+      await exiftool.write(filePath, {
+        'Subject': writableTags
+      }, ['-overwrite_original']);
+    }
+
+    console.log(`Wrote ${writableTags.length} tags to ${path.basename(filePath)}`);
+  } catch (error) {
+    console.error(`Failed to write tags to ${filePath}:`, error);
+    throw error;
+  }
+}
+
 /**
  * Cleanup ExifTool process on shutdown
  */

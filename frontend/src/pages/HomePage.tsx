@@ -6,6 +6,7 @@ import SearchBar from '../components/Search/SearchBar';
 import MasonryGallery from '../components/Gallery/MasonryGallery';
 import { useSearch } from '../hooks/useSearch';
 import { useScrollRestore } from '../hooks/useScrollRestore';
+import { useGalleryNavigation } from '../hooks/useGalleryNavigation';
 import { getStats } from '../api/client';
 
 export default function HomePage() {
@@ -42,6 +43,19 @@ export default function HomePage() {
   const loadedPages = data?.pages.length ?? 0;
 
   const { saveScrollPosition } = useScrollRestore(loadedPages);
+  const { saveNavigationContext } = useGalleryNavigation();
+
+  // Save both scroll position and navigation context when clicking an image
+  const handleNavigate = useCallback(() => {
+    saveScrollPosition();
+    saveNavigationContext(
+      images.map(img => img.id),
+      query,
+      loadedPages,
+      !!hasNextPage,
+      sort
+    );
+  }, [saveScrollPosition, saveNavigationContext, images, query, loadedPages, hasNextPage, sort]);
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -250,7 +264,7 @@ export default function HomePage() {
           isLoading={isLoading}
           isFetchingMore={isFetchingNextPage}
           onLoadMore={handleLoadMore}
-          onNavigate={saveScrollPosition}
+          onNavigate={handleNavigate}
         />
       </Box>
     </Box>

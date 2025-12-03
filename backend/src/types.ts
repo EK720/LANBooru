@@ -31,7 +31,7 @@ export interface ImageTag {
 export interface Folder {
   id: number;
   path: string;
-  recursive: boolean;
+  do_recurse: boolean;
   enabled: boolean;
   last_scanned_at?: Date;
   created_at: Date;

@@ -1,3 +1,4 @@
+import { useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Box,
@@ -8,6 +9,15 @@ import {
   Paper,
   Skeleton,
   Divider,
+  TextField,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControlLabel,
+  Checkbox,
+  Alert,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -15,16 +25,283 @@ import {
   Download as DownloadIcon,
   ContentCopy as DuplicateIcon,
   Star as PrimeIcon,
+  ChevronLeft as PrevIcon,
+  ChevronRight as NextIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Save as SaveIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useImage } from '../hooks/useImage';
-import { getImageFileUrl } from '../api/client';
+import { useGalleryNavigation } from '../hooks/useGalleryNavigation';
+import {
+  getImageFileUrl,
+  searchImages,
+  updateImageTags,
+  deleteImageById,
+  getEditPassword,
+  setEditPassword,
+  getStats,
+} from '../api/client';
 
 export default function ImagePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const imageId = id ? parseInt(id, 10) : undefined;
 
   const { data: image, isLoading, error } = useImage(imageId);
+  const { getAdjacentImages, getNavigationContext, appendToNavigationContext, removeFromNavigationContext } = useGalleryNavigation();
+
+  // Fetch config to check if password is required
+  const { data: stats } = useQuery({
+    queryKey: ['stats'],
+    queryFn: getStats,
+    staleTime: 60 * 60 * 1000, // Cache for 1 hour
+  });
+  const requirePassword = stats?.require_edit_password !== false;
+
+  // Get prev/next images from navigation context
+  const { prev, next, canLoadMore } = imageId
+    ? getAdjacentImages(imageId)
+    : { prev: null, next: null, canLoadMore: false };
+
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTags, setEditedTags] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Password dialog state
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<'save' | 'delete' | null>(null);
+
+  // Delete dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteFile, setDeleteFile] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const goToPrev = useCallback(() => {
+    if (prev) navigate(`/image/${prev}`);
+  }, [prev, navigate]);
+
+  const goToNext = useCallback(async () => {
+    if (next) {
+      navigate(`/image/${next}`);
+      return;
+    }
+
+    // At the end but can load more
+    if (canLoadMore && !isLoadingMore) {
+      setIsLoadingMore(true);
+      try {
+        const context = getNavigationContext();
+        if (!context) return;
+
+        const result = await searchImages({
+          q: context.searchQuery || undefined,
+          page: context.currentPage + 1,
+          sort: context.sort,
+        });
+
+        if (result.images.length > 0) {
+          const newIds = result.images.map(img => img.id);
+          const hasMore = result.page < result.total_pages;
+          appendToNavigationContext(newIds, hasMore);
+          // Navigate to first image of new page
+          navigate(`/image/${newIds[0]}`);
+        }
+      } catch (err) {
+        console.error('Failed to load more images:', err);
+      } finally {
+        setIsLoadingMore(false);
+      }
+    }
+  }, [next, canLoadMore, isLoadingMore, navigate, getNavigationContext, appendToNavigationContext]);
+
+  const goBack = useCallback(() => {
+    // Navigate back to the gallery with search query preserved
+    const savedState = sessionStorage.getItem('gallery-scroll-state');
+    if (savedState) {
+      try {
+        const state = JSON.parse(savedState);
+        navigate(state.pathname + state.search);
+        return;
+      } catch {
+        // Invalid state, fall through to home
+      }
+    }
+    navigate('/');
+  }, [navigate]);
+
+  // Handle password submission - then retry the pending action
+  const handlePasswordSubmit = useCallback(() => {
+    if (!passwordInput.trim()) {
+      setPasswordError('Password is required');
+      return;
+    }
+    setEditPassword(passwordInput.trim());
+    setPasswordError(null);
+    setShowPasswordDialog(false);
+    setPasswordInput('');
+
+    // Retry the pending action
+    if (pendingAction === 'save') {
+      // Will be called after state updates
+      setTimeout(() => saveTags(), 0);
+    } else if (pendingAction === 'delete') {
+      setTimeout(() => confirmDelete(), 0);
+    }
+    setPendingAction(null);
+  }, [passwordInput, pendingAction]);
+
+  // Start editing tags - no password required yet
+  const startEditing = useCallback(() => {
+    if (!image) return;
+    setEditedTags(image.tags.join(' '));
+    setEditError(null);
+    setIsEditing(true);
+  }, [image]);
+
+  // Cancel editing
+  const cancelEditing = useCallback(() => {
+    setIsEditing(false);
+    setEditedTags('');
+    setEditError(null);
+  }, []);
+
+  // Save edited tags - prompts for password if needed
+  const saveTags = useCallback(async () => {
+    if (!imageId) return;
+
+    // Check if we have a password, prompt if not (skip if password not required)
+    if (requirePassword && !getEditPassword()) {
+      setPendingAction('save');
+      setShowPasswordDialog(true);
+      return;
+    }
+
+    setIsSaving(true);
+    setEditError(null);
+
+    try {
+      // Split by whitespace, filter empty, sanitize
+      const tags = editedTags
+        .split(/\s+/)
+        .map(t => t.trim().replace(/[;,]/g, ''))
+        .filter(t => t.length > 0);
+
+      await updateImageTags(imageId, tags);
+
+      // Invalidate cache to refetch
+      queryClient.invalidateQueries({ queryKey: ['image', imageId] });
+      queryClient.invalidateQueries({ queryKey: ['search'] });
+
+      setIsEditing(false);
+      setEditedTags('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save tags';
+      // If password was wrong, prompt for new password
+      if (message === 'Invalid password') {
+        setPendingAction('save');
+        setShowPasswordDialog(true);
+        setPasswordError('Incorrect password');
+      } else {
+        setEditError(message);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [imageId, editedTags, queryClient, requirePassword]);
+
+  // Start delete flow - no password required yet
+  const startDelete = useCallback(() => {
+    setDeleteError(null);
+    setShowDeleteDialog(true);
+  }, []);
+
+  // Confirm delete - prompts for password if needed
+  const confirmDelete = useCallback(async () => {
+    if (!imageId) return;
+
+    // Check if we have a password, prompt if not (skip if password not required)
+    if (requirePassword && !getEditPassword()) {
+      setPendingAction('delete');
+      setShowPasswordDialog(true);
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteImageById(imageId, deleteFile);
+
+      // Remove from navigation context so user can't navigate back to deleted image
+      removeFromNavigationContext(imageId);
+
+      // Invalidate cache
+      queryClient.invalidateQueries({ queryKey: ['image', imageId] });
+      queryClient.invalidateQueries({ queryKey: ['search'] });
+
+      // Navigate to next image or back to gallery
+      setShowDeleteDialog(false);
+      if (next) {
+        navigate(`/image/${next}`);
+      } else if (prev) {
+        navigate(`/image/${prev}`);
+      } else {
+        goBack();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete image';
+      // If password was wrong, prompt for new password
+      if (message === 'Invalid password') {
+        setPendingAction('delete');
+        setShowPasswordDialog(true);
+        setPasswordError('Incorrect password');
+      } else {
+        setDeleteError(message);
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [imageId, deleteFile, queryClient, next, prev, navigate, goBack, requirePassword, removeFromNavigationContext]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          goToPrev();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          goToNext();
+          break;
+        case 'Escape':
+          e.preventDefault();
+          goBack();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToPrev, goToNext, goBack]);
 
   if (error) {
     return (
@@ -78,7 +355,7 @@ export default function ImagePage() {
             background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)',
           }}
         >
-          <IconButton onClick={() => navigate(-1)} sx={{ color: 'white' }}>
+          <IconButton onClick={() => goBack()} sx={{ color: 'white' }}>
             <BackIcon />
           </IconButton>
           <Stack direction="row" spacing={1}>
@@ -151,6 +428,7 @@ export default function ImagePage() {
         sx={{
           width: { xs: '100%', md: 320 },
           p: 2,
+          pb: { xs: 9, md: 2 }, // Extra bottom padding on mobile for fixed nav footer
           borderRadius: 0,
           overflowY: 'auto',
         }}
@@ -172,10 +450,56 @@ export default function ImagePage() {
 
             {/* Tags */}
             <Box>
-              <Typography variant="overline" color="text.secondary">
-                Tags
-              </Typography>
-              {image.tags.length > 0 ? (
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="overline" color="text.secondary">
+                  Tags
+                </Typography>
+                {!isEditing && (
+                  <IconButton size="small" onClick={startEditing} title="Edit tags">
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Stack>
+              {isEditing ? (
+                <Stack spacing={1} sx={{ mt: 1 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    multiline
+                    rows={3}
+                    value={editedTags}
+                    onChange={(e) => setEditedTags(e.target.value)}
+                    placeholder="Tags separated by spaces"
+                    disabled={isSaving}
+                    helperText="Use underscores for multi-word tags (e.g., brown_hair)"
+                  />
+                  {editError && (
+                    <Alert severity="error" sx={{ py: 0 }}>
+                      {editError}
+                    </Alert>
+                  )}
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<SaveIcon />}
+                      onClick={saveTags}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<CloseIcon />}
+                      onClick={cancelEditing}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </Button>
+                  </Stack>
+                </Stack>
+              ) : image.tags.length > 0 ? (
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                   {image.tags.map((tag) => (
                     <Chip
@@ -299,9 +623,126 @@ export default function ImagePage() {
                 </Typography>
               </Stack>
             </Box>
+
+            <Divider />
+
+            {/* Actions */}
+            <Box>
+              <Typography variant="overline" color="text.secondary">
+                Actions
+              </Typography>
+              <Stack spacing={1} sx={{ mt: 1 }}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  startIcon={<DeleteIcon />}
+                  onClick={startDelete}
+                >
+                  Delete Image
+                </Button>
+              </Stack>
+            </Box>
           </Stack>
         ) : null}
       </Paper>
+
+      {/* Mobile-only navigation footer */}
+      {(prev || next || canLoadMore) && (
+        <Box
+          sx={{
+            display: { xs: 'flex', md: 'none' },
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            bgcolor: 'background.paper',
+            borderTop: 1,
+            borderColor: 'divider',
+            justifyContent: 'space-between',
+            p: 1,
+            zIndex: 10,
+          }}
+        >
+          <IconButton
+            onClick={goToPrev}
+            disabled={!prev}
+            sx={{ opacity: prev ? 1 : 0.3 }}
+          >
+            <PrevIcon />
+          </IconButton>
+          <IconButton
+            onClick={goToNext}
+            disabled={(!next && !canLoadMore) || isLoadingMore}
+            sx={{ opacity: (next || canLoadMore) ? 1 : 0.3 }}
+          >
+            <NextIcon />
+          </IconButton>
+        </Box>
+      )}
+
+      {/* Password Dialog */}
+      <Dialog open={showPasswordDialog} onClose={() => setShowPasswordDialog(false)}>
+        <DialogTitle>Enter Edit Password</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            type="password"
+            label="Password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+            error={!!passwordError}
+            helperText={passwordError}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPasswordDialog(false)}>Cancel</Button>
+          <Button onClick={handlePasswordSubmit} variant="contained">
+            Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onClose={() => !isDeleting && setShowDeleteDialog(false)}>
+        <DialogTitle>Delete Image</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>
+            Are you sure you want to delete this image? This action cannot be undone.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={deleteFile}
+                onChange={(e) => setDeleteFile(e.target.checked)}
+                disabled={isDeleting}
+              />
+            }
+            label="Also delete the file from disk"
+          />
+          {deleteError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={confirmDelete}
+            variant="contained"
+            color="error"
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

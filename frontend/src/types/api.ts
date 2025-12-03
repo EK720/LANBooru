@@ -32,6 +32,7 @@ export interface Stats {
   total_tags: number;
   total_folders: number;
   last_scan?: string;
+  require_edit_password?: boolean;
 }
 
 export interface Folder {
