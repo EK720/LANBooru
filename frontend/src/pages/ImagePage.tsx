@@ -240,15 +240,23 @@ export default function ImagePage() {
     setIsDeleting(true);
     setDeleteError(null);
 
+    // Capture duplicate group IDs before deletion so we can invalidate their cache
+    const duplicateGroupIds = image?.duplicates?.group?.filter(id => id !== imageId) || [];
+
     try {
       await deleteImageById(imageId, deleteFile);
 
       // Remove from navigation context so user can't navigate back to deleted image
       removeFromNavigationContext(imageId);
 
-      // Invalidate cache
+      // Invalidate cache for deleted image and search results
       queryClient.invalidateQueries({ queryKey: ['image', imageId] });
       queryClient.invalidateQueries({ queryKey: ['search'] });
+
+      // Invalidate cache for other images in the duplicate group so their sidebar updates
+      for (const dupId of duplicateGroupIds) {
+        queryClient.invalidateQueries({ queryKey: ['image', dupId] });
+      }
 
       // Navigate to next image or back to gallery
       setShowDeleteDialog(false);

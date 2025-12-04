@@ -35,9 +35,7 @@ async function acquireScanLock(wait: boolean = true): Promise<boolean> {
   return true;
 }
 
-/**
- * Release scan lock and notify next waiter in queue
- */
+// Release scan lock and notify next waiter in queue
 function releaseScanLock(): void {
   isScanningInProgress = false;
   if (scanQueue.length > 0) {
@@ -304,7 +302,7 @@ async function processFile(filePath: string): Promise<boolean> {
 }
 
 // Remove a tag from an image
-async function removeTagFromImage(imageId: number, tagName: string): Promise<void> {
+export async function removeTagFromImage(imageId: number, tagName: string): Promise<void> {
   await transaction(async (conn) => {
     const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
     if (tagRows.length > 0) {

@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { query, queryOne, transaction } from '../database/connection';
-import { getThumbnailPath, resizeThumbnail } from '../services/thumbnail';
+import { query, queryOne, execute, transaction } from '../database/connection';
+import { getThumbnailPath, resizeThumbnail, calculateFileHash } from '../services/thumbnail';
 import { deleteImage } from '../services/scanner';
 import { writeTagsToFile } from '../services/exif';
 import { requireEditPassword } from '../middleware/security';
@@ -222,6 +222,16 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
     const finalTags = [...newTags];
     try {
       await writeTagsToFile(image.file_path, finalTags);
+
+      // Rehash the file and update DB so scanner doesn't see it as changed
+      const [newHash, stats] = await Promise.all([
+        calculateFileHash(image.file_path),
+        fs.stat(image.file_path)
+      ]);
+      await execute(
+        'UPDATE images SET file_hash = ?, file_size = ?, updated_at = NOW() WHERE id = ?',
+        [newHash, stats.size, imageId]
+      );
     } catch (fileError) {
       console.error('Failed to write tags to file:', fileError);
       // Don't fail the request, DB is already updated
