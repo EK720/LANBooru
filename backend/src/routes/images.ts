@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { query, queryOne, execute, transaction } from '../database/connection';
-import { getThumbnailPath, resizeThumbnail, calculateFileHash } from '../services/thumbnail';
+import { getThumbnailPath, resizeThumbnail, calculateFileHash, deleteThumbnail, generateThumbnail } from '../services/thumbnail';
 import { deleteImage } from '../services/scanner';
 import { writeTagsToFile } from '../services/exif';
 import { requireEditPassword } from '../middleware/security';
@@ -167,7 +167,7 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
     }
 
     const imageId = parseInt(id);
-    const image = await queryOne<{ file_path: string }>('SELECT file_path FROM images WHERE id = ?', [imageId]);
+    const image = await queryOne<{ file_path: string, file_hash: string }>('SELECT file_path, file_hash FROM images WHERE id = ?', [imageId]);
 
     if (!image) {
       return res.status(404).json({ success: false, error: 'Image not found' });
@@ -232,6 +232,17 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
         'UPDATE images SET file_hash = ?, file_size = ?, updated_at = NOW() WHERE id = ?',
         [newHash, stats.size, imageId]
       );
+	  
+	  // Rename old thumbnail to new path
+	  const oldThumbLoc = getThumbnailPath(image.file_hash);
+	  try {
+		await fs.rename(oldThumbLoc, oldThumbLoc.slice(0, oldThumbLoc.lastIndexOf('/')) + `/${newHash}.jpg` );
+	  } catch (thumbErr) {
+		// If the rename fails for some reason, just delete the old thumb and generate a new one
+		await deleteThumbnail(image.file_hash);
+	    generateThumbnail(image.file_path, newHash);
+	  }
+	  
     } catch (fileError) {
       console.error('Failed to write tags to file:', fileError);
       // Don't fail the request, DB is already updated

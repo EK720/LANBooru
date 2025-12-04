@@ -13,7 +13,7 @@ interface MasonryGalleryProps {
 }
 
 // Column configuration
-const TARGET_COLUMN_WIDTH = 280; // Ideal column width in pixels
+const TARGET_COLUMN_WIDTH = 285; // Ideal column width in pixels
 const MIN_COLUMN_WIDTH = 150; // Minimum column width (for small screens)
 const MAX_COLUMNS = 16;
 const GAP = 8; // Gap between columns in pixels
@@ -25,7 +25,7 @@ function calculateColumns(containerWidth: number): { cols: number; colWidth: num
   }
 
   // Calculate optimal number of columns based on target width
-  let cols = Math.floor((containerWidth + GAP) / (TARGET_COLUMN_WIDTH + GAP));
+  let cols = Math.round((containerWidth + GAP) / (TARGET_COLUMN_WIDTH + GAP));
 
   // Ensure at least 2 columns on phone (420px), 4 on iPad (810px)
   // If we'd get 1 column, try smaller column widths

@@ -263,13 +263,34 @@ class QueryParser {
 function buildSQLFromAST(node: ASTNode): { sql: string; params: string[] } {
   switch (node.type) {
     case 'TAG': {
+      const tagValue = node.value!;
+
+      // Check if this is a wildcard search
+      if (tagValue.includes('*')) {
+        // Escape SQL LIKE special characters, then convert * to %
+        const likePattern = tagValue
+          .replace(/%/g, '\\%')
+          .replace(/_/g, '\\_')
+          .replace(/\*/g, '%');
+
+        return {
+          sql: `EXISTS (
+            SELECT 1 FROM image_tags it
+            JOIN tags t ON it.tag_id = t.id
+            WHERE it.image_id = images.id AND t.name LIKE ? ESCAPE '\\\\'
+          )`,
+          params: [likePattern]
+        };
+      }
+
+      // Exact match (faster)
       return {
         sql: `EXISTS (
           SELECT 1 FROM image_tags it
           JOIN tags t ON it.tag_id = t.id
           WHERE it.image_id = images.id AND t.name = ?
         )`,
-        params: [node.value!]
+        params: [tagValue]
       };
     }
 
