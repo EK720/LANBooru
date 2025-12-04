@@ -17,12 +17,6 @@ dist
 *.md
 README*
 
-# Test files
-test-*.ts
-*.test.ts
-*.spec.ts
-__tests__
-
 # IDE
 .vscode
 .idea
