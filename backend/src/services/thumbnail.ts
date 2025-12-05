@@ -9,6 +9,13 @@ import { queryOne } from '../database/connection';
 export const THUMBNAIL_SIZE = parseInt(process.env.THUMBNAIL_SIZE || '300');
 
 const THUMBNAIL_DIR = process.env.THUMBNAIL_DIR || '/app/thumbnails';
+const DUPLICATE_SCAN_ENABLED = process.env.DUPLICATE_SCAN_ENABLED === 'true' || process.env.DUPLICATE_SCAN_ENABLED === '1';
+
+const EMPTY_HASHES = {
+  hash600: '0000000000000000',
+  hash800: '0000000000000000',
+  hash1400: '0000000000000000'
+};
 
 /**
  * Get video duration in seconds
@@ -97,8 +104,8 @@ async function generateDHash(imageBuffer: Buffer): Promise<string> {
  * Note: Intermediate buffers required because Sharp's resize() overrides, doesn't chain
  */
 export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise<{
-  hash800: string;
   hash600: string;
+  hash800: string;
   hash1400: string;
 }> {
   try {
@@ -107,27 +114,23 @@ export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise
 
     // Resize to 3 target sizes in parallel (clone() reuses decoded data)
     // Must create intermediate buffers - Sharp's resize() overrides, doesn't chain
-    const [buffer800, buffer600, buffer1400] = await Promise.all([
-      baseImage.clone().resize(800, 800, { fit: 'inside' }).toBuffer(),
+    const [buffer600, buffer800, buffer1400] = await Promise.all([
       baseImage.clone().resize(600, 600, { fit: 'inside' }).toBuffer(),
+      baseImage.clone().resize(800, 800, { fit: 'inside' }).toBuffer(),
       baseImage.clone().resize(1400, 1400, { fit: 'inside' }).toBuffer(),
     ]);
 
     // Generate dHash from each resized buffer in parallel
-    const [hash800, hash600, hash1400] = await Promise.all([
-      generateDHash(buffer800),
+    const [hash600, hash800, hash1400] = await Promise.all([
       generateDHash(buffer600),
+      generateDHash(buffer800),
       generateDHash(buffer1400),
     ]);
 
-    return { hash800, hash600, hash1400 };
+    return { hash600, hash800, hash1400 };
   } catch (error) {
     console.error('Failed to generate multi-resolution dHash:', error);
-    return {
-      hash800: '0000000000000000',
-      hash600: '0000000000000000',
-      hash1400: '0000000000000000'
-    };
+    return EMPTY_HASHES;
   }
 }
 
@@ -140,7 +143,7 @@ export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise
 export async function generateThumbnail(
   filePath: string,
   fileHash: string
-): Promise<{ hash800: string; hash600: string; hash1400: string }> {
+): Promise<{ hash600: string; hash800: string; hash1400: string }> {
   try {
     const ext = path.extname(filePath).toLowerCase();
 
@@ -154,14 +157,14 @@ export async function generateThumbnail(
       await fs.access(outputPath);
       // Thumbnail exists - an image with this file_hash is already in the DB
       // Just return its content hashes instead of re-processing
-      const existing = await queryOne<{ content_hash_800: string; content_hash_600: string; content_hash_1400: string }>(
-        'SELECT content_hash_800, content_hash_600, content_hash_1400 FROM images WHERE file_hash = ? LIMIT 1',
+      const existing = await queryOne<{ content_hash_600: string; content_hash_800: string; content_hash_1400: string }>(
+        'SELECT content_hash_600, content_hash_800, content_hash_1400 FROM images WHERE file_hash = ? LIMIT 1',
         [fileHash]
       );
       if (existing) {
         return {
-          hash800: existing.content_hash_800,
           hash600: existing.content_hash_600,
+          hash800: existing.content_hash_800,
           hash1400: existing.content_hash_1400
         };
       }
@@ -178,11 +181,7 @@ export async function generateThumbnail(
 
       if (duration <= 0) {
         console.error(`Invalid video duration for ${filePath}`);
-        return {
-          hash800: '0000000000000000',
-          hash600: '0000000000000000',
-          hash1400: '0000000000000000'
-        };
+        return EMPTY_HASHES;
       }
 
       // Try frames at 0s, 1/3, and 2/3 through the video
@@ -220,7 +219,10 @@ export async function generateThumbnail(
     }
 
     // Generate multi-resolution dHash before resizing (for duplicate detection)
-    const hashes = await generateMultiResolutionDHash(imageBuffer);
+    // Skip if duplicate scanning is disabled - significant performance improvement
+    const hashes = DUPLICATE_SCAN_ENABLED
+      ? await generateMultiResolutionDHash(imageBuffer)
+      : EMPTY_HASHES;
 
     // Resize so largest dimension becomes THUMBNAIL_SIZE, preserving aspect ratio
     await sharp(imageBuffer)
@@ -234,11 +236,7 @@ export async function generateThumbnail(
     return hashes;
   } catch (error) {
     console.error(`Failed to generate thumbnail for ${filePath}:`, error);
-    return {
-      hash800: '0000000000000000',
-      hash600: '0000000000000000',
-      hash1400: '0000000000000000'
-    };
+    return EMPTY_HASHES;
   }
 }
 

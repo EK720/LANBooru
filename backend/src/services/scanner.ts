@@ -159,7 +159,7 @@ async function processFile(filePath: string): Promise<boolean> {
     // Insert image first (we need the ID to compare with duplicates)
     const result = await execute(
       `INSERT INTO images
-        (file_path, filename, file_type, file_size, file_hash, content_hash_800, content_hash_600, content_hash_1400, width, height, artist, rating, source, created_at)
+        (file_path, filename, file_type, file_size, file_hash, content_hash_600, content_hash_800, content_hash_1400, width, height, artist, rating, source, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         filePath,
@@ -167,8 +167,8 @@ async function processFile(filePath: string): Promise<boolean> {
         path.extname(filePath).toLowerCase().substring(1), // Remove leading dot
         stats.size,
         fileHash,
-        contentHashes.hash800,
         contentHashes.hash600,
+        contentHashes.hash800,
         contentHashes.hash1400,
         metadata.width || 0,
         metadata.height || 0,
@@ -191,9 +191,9 @@ async function processFile(filePath: string): Promise<boolean> {
       // Order by resolution DESC so first result is highest quality
       const duplicates = await query<Image>(
         `SELECT id, width, height, file_path FROM images
-         WHERE (content_hash_800 = ? OR content_hash_600 = ? OR content_hash_1400 = ?)
+         WHERE (content_hash_600 = ? OR content_hash_800 = ? OR content_hash_1400 = ?)
          ORDER BY (width * height) DESC`,
-        [contentHashes.hash800, contentHashes.hash600, contentHashes.hash1400]
+        [contentHashes.hash600, contentHashes.hash800, contentHashes.hash1400]
       );
 
       if (duplicates.length > 1) {
