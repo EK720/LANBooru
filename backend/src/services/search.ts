@@ -22,12 +22,57 @@ interface Token {
  * AST node types for the parsed query
  */
 interface ASTNode {
-  type: 'AND' | 'OR' | 'NOT' | 'TAG';
+  type: 'AND' | 'OR' | 'NOT' | 'TAG' | 'METATAG';
   value?: string;
+  metatag?: {
+    key: string;
+    value: string;
+    operator?: string;  // >, <, >=, <= for comparison metatags
+  };
   children?: ASTNode[];
 }
 
 /**
+ * Sort directive for ORDER BY
+ */
+interface SortDirective {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
+/**
+ * Result of parsing a search query
+ */
+interface ParseResult {
+  filterAST: ASTNode;
+  sortDirectives: SortDirective[];
+}
+
+// Constants for sorting
+const DEFAULT_SORT_FIELD = 'date';
+const DEFAULT_SORT_DIRECTION: 'asc' | 'desc' = 'desc';
+
+const VALID_SORT_FIELDS = ['random', 'id', 'date', 'rating', 'height', 'width', 'size', 'updated'];
+const FILTER_METATAGS = ['rating', 'artist', 'date', 'id'];
+
+const SORT_FIELD_MAP: Record<string, string> = {
+  'random': 'RAND()',
+  'id': 'images.id',
+  'date': 'images.created_at',
+  'rating': 'images.rating',
+  'height': 'images.height',
+  'width': 'images.width',
+  'size': 'images.file_size',
+  'updated': 'images.updated_at'
+};
+
+const RATING_MAP: Record<string, number> = {
+  'safe': 1, 's': 1,
+  'questionable': 2, 'q': 2,
+  'explicit': 3, 'e': 3
+};
+
+ /**
  * Tokenize search query
  * Examples:
  *   "blue_sky red_eyes" -> [TAG(blue_sky), TAG(red_eyes)] -> blue_sky AND red_eyes
@@ -80,8 +125,6 @@ function tokenize(queryString: string): Token[] {
     }
 
     // Tag (read until whitespace or brace)
-    // Tags can contain parentheses, hyphens, tildes, etc.
-    // Operators - and ~ are only recognized at the START of a token, not within
     let tag = '';
     while (i < chars.length && !' \t{}'.includes(chars[i])) {
       tag += chars[i];
@@ -98,7 +141,39 @@ function tokenize(queryString: string): Token[] {
 }
 
 /**
- * Parser for search queries with boolean logic
+ * Parse a metatag value to extract comparison operators
+ */
+function parseMetatagValue(value: string): { operator?: string; cleanValue: string } {
+  const match = value.match(/^(>=|<=|>|<)(.+)$/);
+  if (match) {
+    return { operator: match[1], cleanValue: match[2] };
+  }
+  return { cleanValue: value };
+}
+
+/**
+ * Parse a sort: metatag value
+ */
+function parseSortValue(value: string): SortDirective | null {
+  let field = value.toLowerCase();
+  let direction: 'asc' | 'desc' = 'desc';
+
+  if (field.endsWith('_asc')) {
+    field = field.slice(0, -4);
+    direction = 'asc';
+  } else if (field.endsWith('_desc')) {
+    field = field.slice(0, -5);
+  }
+
+  if (!VALID_SORT_FIELDS.includes(field)) {
+    return null; // Invalid - silently ignore
+  }
+
+  return { field, direction };
+}
+
+/**
+ * Parser for search queries with boolean logic and metatags
  *
  * Grammar:
  * expression := term+
@@ -110,30 +185,38 @@ function tokenize(queryString: string): Token[] {
  * - Terms with ~ prefix are collected into OR groups
  * - Terms with - prefix are NOTed
  * - {} groups terms together
+ * - * does a like/fuzzy search
  */
 class QueryParser {
   private tokens: Token[];
   private current = 0;
+  private sortDirectives: SortDirective[] = [];
 
   constructor(tokens: Token[]) {
     this.tokens = tokens;
   }
 
   /**
-   * Parse the entire query
+   * Parse the entire query, separating filters from sort directives
    */
-  parse(): ASTNode {
+  parse(): ParseResult {
     const terms = this.parseTerms();
 
-    if (terms.length === 0) {
-      return { type: 'AND', children: [] };
+    // Filter out sort metatags (they're collected in sortDirectives)
+    const filterTerms = this.filterOutSortMetatags(terms);
+
+    if (filterTerms.length === 0) {
+      return {
+        filterAST: { type: 'AND', children: [] },
+        sortDirectives: this.sortDirectives
+      };
     }
 
     // Separate OR terms from AND terms
     const orTerms: ASTNode[] = [];
     const andTerms: ASTNode[] = [];
 
-    for (const term of terms) {
+    for (const term of filterTerms) {
       if (term.type === 'OR' && term.children) {
         orTerms.push(...term.children);
       } else {
@@ -142,20 +225,56 @@ class QueryParser {
     }
 
     // Build final tree
+    let filterAST: ASTNode;
     if (orTerms.length > 0 && andTerms.length > 0) {
-      // Mix of AND and OR: (AND terms) AND (OR terms)
       const orNode: ASTNode = { type: 'OR', children: orTerms };
-      return { type: 'AND', children: [...andTerms, orNode] };
+      filterAST = { type: 'AND', children: [...andTerms, orNode] };
     } else if (orTerms.length > 0) {
-      // Only OR terms
-      return { type: 'OR', children: orTerms };
+      filterAST = { type: 'OR', children: orTerms };
     } else {
-      // Only AND terms
       if (andTerms.length === 1) {
-        return andTerms[0];
+        filterAST = andTerms[0];
+      } else {
+        filterAST = { type: 'AND', children: andTerms };
       }
-      return { type: 'AND', children: andTerms };
     }
+
+    return { filterAST, sortDirectives: this.sortDirectives };
+  }
+
+  /**
+   * Recursively filter out sort metatags and collect them
+   */
+  private filterOutSortMetatags(nodes: ASTNode[]): ASTNode[] {
+    const result: ASTNode[] = [];
+
+    for (const node of nodes) {
+      if (node.type === 'METATAG' && node.metatag?.key === 'sort') {
+        // Already collected during parsing
+        continue;
+      }
+
+      if (node.type === 'OR' && node.children) {
+        const filtered = this.filterOutSortMetatags(node.children);
+        if (filtered.length > 0) {
+          result.push({ ...node, children: filtered });
+        }
+      } else if (node.type === 'AND' && node.children) {
+        const filtered = this.filterOutSortMetatags(node.children);
+        if (filtered.length > 0) {
+          result.push({ ...node, children: filtered });
+        }
+      } else if (node.type === 'NOT' && node.children) {
+        const filtered = this.filterOutSortMetatags(node.children);
+        if (filtered.length > 0) {
+          result.push({ ...node, children: filtered });
+        }
+      } else {
+        result.push(node);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -172,7 +291,7 @@ class QueryParser {
   }
 
   /**
-   * Parse a single term: [NOT] [OR] (TAG | group)
+   * Parse a single term: [NOT] [OR] (TAG | METATAG | group)
    */
   private parseTerm(): ASTNode {
     let hasNot = false;
@@ -190,7 +309,7 @@ class QueryParser {
       hasOr = true;
     }
 
-    // Parse the actual term (TAG or group)
+    // Parse the actual term (TAG, METATAG, or group)
     let term: ASTNode;
 
     if (this.peek().type === TokenType.LBRACE) {
@@ -206,7 +325,6 @@ class QueryParser {
       if (groupTerms.length === 1) {
         term = groupTerms[0];
       } else {
-        // Separate OR and AND terms within the group
         const orTerms: ASTNode[] = [];
         const andTerms: ASTNode[] = [];
 
@@ -228,9 +346,35 @@ class QueryParser {
         }
       }
     } else if (this.peek().type === TokenType.TAG) {
-      // Single tag
       const token = this.advance();
-      term = { type: 'TAG', value: token.value };
+      const tagValue = token.value;
+
+      // Check if this is a metatag (contains :)
+      if (tagValue.includes(':')) {
+        const colonIndex = tagValue.indexOf(':');
+        const key = tagValue.substring(0, colonIndex).toLowerCase();
+        const rawValue = tagValue.substring(colonIndex + 1);
+
+        if (key === 'sort') {
+          // Handle sort metatag
+          const sortDirective = parseSortValue(rawValue);
+          if (sortDirective) {
+            this.sortDirectives.push(sortDirective);
+          }
+          // Return a placeholder that will be filtered out
+          term = { type: 'METATAG', metatag: { key: 'sort', value: rawValue } };
+        } else if (FILTER_METATAGS.includes(key)) {
+          // Handle filter metatags
+          const { operator, cleanValue } = parseMetatagValue(rawValue);
+          term = { type: 'METATAG', metatag: { key, value: cleanValue, operator } };
+        } else {
+          // Unknown metatag - treat as regular tag for forward compatibility
+          term = { type: 'TAG', value: tagValue };
+        }
+      } else {
+        // Regular tag
+        term = { type: 'TAG', value: tagValue };
+      }
     } else {
       throw new Error(`Unexpected token: ${this.peek().type}`);
     }
@@ -258,16 +402,121 @@ class QueryParser {
 }
 
 /**
+ * Build SQL for rating metatag
+ */
+function buildRatingSQL(value: string): { sql: string; params: any[] } {
+  const numericRating = RATING_MAP[value.toLowerCase()];
+
+  if (numericRating === undefined) {
+    return { sql: '1=0', params: [] }; // Invalid rating matches nothing
+  }
+
+  return {
+    sql: 'images.rating = ?',
+    params: [numericRating]
+  };
+}
+
+/**
+ * Build SQL for artist metatag
+ */
+function buildArtistSQL(value: string): { sql: string; params: any[] } {
+  if (value.includes('*')) {
+    // Wildcard support
+    const likePattern = value
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_')
+      .replace(/\*/g, '%');
+
+    return {
+      sql: "images.artist LIKE ? ESCAPE '\\\\'",
+      params: [likePattern]
+    };
+  }
+
+  return {
+    sql: 'images.artist = ?',
+    params: [value]
+  };
+}
+
+/**
+ * Build SQL for date metatag
+ */
+function buildDateSQL(value: string, operator?: string): { sql: string; params: any[] } {
+  // Year-only format: "2023" means full year range
+  if (/^\d{4}$/.test(value)) {
+    const year = parseInt(value);
+    return {
+      sql: 'images.created_at >= ? AND images.created_at < ?',
+      params: [`${year}-01-01 00:00:00`, `${year + 1}-01-01 00:00:00`]
+    };
+  }
+
+  // Year-month format: "2023-06" means full month range
+  if (/^\d{4}-\d{2}$/.test(value)) {
+    const [year, month] = value.split('-').map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    return {
+      sql: 'images.created_at >= ? AND images.created_at < ?',
+      params: [
+        `${year}-${String(month).padStart(2, '0')}-01 00:00:00`,
+        `${nextYear}-${String(nextMonth).padStart(2, '0')}-01 00:00:00`
+      ]
+    };
+  }
+
+  // Full date format: "2023-06-15"
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (!operator) {
+      // Exact date match
+      return {
+        sql: 'DATE(images.created_at) = ?',
+        params: [value]
+      };
+    }
+
+    // Comparison operators
+    const timestamp = operator.includes('>') ? `${value} 00:00:00` : `${value} 23:59:59`;
+    return {
+      sql: `images.created_at ${operator} ?`,
+      params: [timestamp]
+    };
+  }
+
+  // Invalid format
+  return { sql: '1=0', params: [] };
+}
+
+/**
+ * Build SQL for id metatag
+ */
+function buildIdSQL(value: string, operator?: string): { sql: string; params: any[] } {
+  const idValue = parseInt(value);
+
+  if (isNaN(idValue)) {
+    return { sql: '1=0', params: [] };
+  }
+
+  const sqlOp = operator || '=';
+
+  return {
+    sql: `images.id ${sqlOp} ?`,
+    params: [idValue]
+  };
+}
+
+/**
  * Build SQL WHERE clause from AST
  */
-function buildSQLFromAST(node: ASTNode): { sql: string; params: string[] } {
+function buildSQLFromAST(node: ASTNode): { sql: string; params: any[] } {
   switch (node.type) {
     case 'TAG': {
       const tagValue = node.value!;
 
       // Check if this is a wildcard search
       if (tagValue.includes('*')) {
-        // Escape SQL LIKE special characters, then convert * to %
         const likePattern = tagValue
           .replace(/%/g, '\\%')
           .replace(/_/g, '\\_')
@@ -292,6 +541,24 @@ function buildSQLFromAST(node: ASTNode): { sql: string; params: string[] } {
         )`,
         params: [tagValue]
       };
+    }
+
+    case 'METATAG': {
+      const { key, value, operator } = node.metatag!;
+
+      switch (key) {
+        case 'rating':
+          return buildRatingSQL(value);
+        case 'artist':
+          return buildArtistSQL(value);
+        case 'date':
+          return buildDateSQL(value, operator);
+        case 'id':
+          return buildIdSQL(value, operator);
+        case 'sort': // Sort metatags should have been arleady extracted - this is a no-op filter
+        default:
+          return { sql: '1=1', params: [] };
+      }
     }
 
     case 'NOT': {
@@ -325,40 +592,66 @@ function buildSQLFromAST(node: ASTNode): { sql: string; params: string[] } {
     }
 
     default:
-      throw new Error(`Unknown node type: ${node.type}`);
+      throw new Error(`Unknown node type: ${(node as ASTNode).type}`);
   }
+}
+
+/**
+ * Build ORDER BY clause from sort directives
+ */
+function buildOrderByClause(sortDirectives: SortDirective[]): string {
+  const parts: string[] = [];
+  const usedFields = new Set<string>();
+
+  for (const { field, direction } of sortDirectives) {
+    if (field === 'random') {
+      parts.push('RAND()');
+    } else {
+      parts.push(`${SORT_FIELD_MAP[field]} ${direction.toUpperCase()}`);
+    }
+    usedFields.add(field);
+  }
+
+  // Add default sort as tiebreaker if not already present
+  if (!usedFields.has(DEFAULT_SORT_FIELD) && !usedFields.has('random')) {
+    parts.push(`${SORT_FIELD_MAP[DEFAULT_SORT_FIELD]} ${DEFAULT_SORT_DIRECTION.toUpperCase()}`);
+  }
+
+  // Always add ID as final tiebreaker for consistent pagination (unless random)
+  if (!usedFields.has('id') && !usedFields.has('random')) {
+    const lastDir = sortDirectives.length > 0
+      ? sortDirectives[sortDirectives.length - 1].direction
+      : DEFAULT_SORT_DIRECTION;
+    parts.push(`images.id ${lastDir.toUpperCase()}`);
+  }
+
+  return parts.length > 0 ? parts.join(', ') : `${SORT_FIELD_MAP[DEFAULT_SORT_FIELD]} ${DEFAULT_SORT_DIRECTION.toUpperCase()}, images.id DESC`;
 }
 
 /**
  * Search for images based on query
  */
 export async function searchImages(searchQuery: SearchQuery): Promise<SearchResult> {
-  const { query: queryString, page = 1, limit = 50, sort = 'date_desc' } = searchQuery;
+  const { query: queryString, page = 1, limit = 50 } = searchQuery;
 
   // Parse query
   let whereClause = '1=1';
   let params: any[] = [];
+  let orderBy = buildOrderByClause([]);
 
   if (queryString && queryString.trim().length > 0) {
     try {
       const tokens = tokenize(queryString);
       const parser = new QueryParser(tokens);
-      const ast = parser.parse();
-      const { sql, params: queryParams } = buildSQLFromAST(ast);
+      const { filterAST, sortDirectives } = parser.parse();
+      const { sql, params: queryParams } = buildSQLFromAST(filterAST);
       whereClause = sql;
       params = queryParams;
+      orderBy = buildOrderByClause(sortDirectives);
     } catch (error) {
       console.error('Failed to parse search query:', error);
       throw new Error('Invalid search query syntax');
     }
-  }
-
-  // Build ORDER BY clause
-  let orderBy = 'images.created_at DESC, images.id DESC';
-  if (sort === 'date_asc') {
-    orderBy = 'images.created_at ASC, images.id ASC';
-  } else if (sort === 'random') {
-    orderBy = 'RAND()';
   }
 
   // Count total results
@@ -411,14 +704,49 @@ export async function searchImages(searchQuery: SearchQuery): Promise<SearchResu
   };
 }
 
-/**
- * Get tag suggestions for autocomplete
- */
-export async function suggestTags(prefix: string, limit: number = 20): Promise<{ name: string; count: number }[]> {
+export interface TagsResult {
+  tags: { name: string; count: number }[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export async function getTags(options: {
+  query?: string;
+  page?: number;
+  limit?: number;
+}): Promise<TagsResult> {
+  const { query: q = '', page = 1, limit = 50 } = options;
+  const offset = (page - 1) * limit;
+
+  // Build WHERE clause
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (q) {
+    conditions.push('name LIKE ?');
+    params.push(`${q}%`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Get total count
+  const [countResult] = await query<{ total: number }>(
+    `SELECT COUNT(*) as total FROM tags ${whereClause}`,
+    params
+  );
+  const total = countResult?.total || 0;
+
+  // Get tags page
   const tags = await query<{ name: string; count: number }>(
-    'SELECT name, count FROM tags WHERE name LIKE ? ORDER BY count DESC, name ASC LIMIT ?',
-    [`${prefix}%`, limit]
+    `SELECT name, count FROM tags ${whereClause} ORDER BY count DESC, name ASC LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
 
-  return tags;
+  return {
+    tags,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit)
+  };
 }

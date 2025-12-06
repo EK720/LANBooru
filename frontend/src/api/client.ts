@@ -35,16 +35,37 @@ export async function searchImages(params: {
   return fetchJSON<SearchResult>(`${API_BASE}/search?${searchParams}`);
 }
 
-// Tag suggestions
+// Tags
 export interface TagSuggestion {
   name: string;
   count: number;
 }
 
+export interface TagsResult {
+  tags: TagSuggestion[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export async function getTags(params: {
+  q?: string;
+  page?: number;
+  limit?: number;
+}): Promise<TagsResult> {
+  const searchParams = new URLSearchParams();
+  if (params.q) searchParams.set('q', params.q);
+  if (params.page) searchParams.set('page', params.page.toString());
+  if (params.limit) searchParams.set('limit', params.limit.toString());
+
+  return fetchJSON<TagsResult>(`${API_BASE}/search/tags?${searchParams}`);
+}
+
+// Tag suggestions for autocomplete (uses tags endpoint)
 export async function getTagSuggestions(prefix: string): Promise<TagSuggestion[]> {
   if (!prefix || prefix.length < 2) return [];
-  const searchParams = new URLSearchParams({ q: prefix });
-  return fetchJSON<TagSuggestion[]>(`${API_BASE}/search/tags/suggest?${searchParams}`);
+  const result = await getTags({ q: prefix, limit: 20 });
+  return result.tags;
 }
 
 // Single image

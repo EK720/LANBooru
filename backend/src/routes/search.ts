@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { searchImages, suggestTags } from '../services/search';
+import { searchImages, getTags } from '../services/search';
 
 const MAX_POSTS_PER_QUERY = parseInt(process.env.MAX_RESULTS_PER_PAGE || '100');
 const router = Router();
@@ -30,22 +30,23 @@ router.get('/', async (req, res) => {
 });
 
 /**
- * GET /api/tags/suggest?q=prefix
- * Get tag suggestions for autocomplete
+ * GET /api/tags?q=prefix&page=1&limit=50
+ * Get paginated list of tags, optionally filtered by prefix
  */
-router.get('/tags/suggest', async (req, res) => {
+router.get('/tags', async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q = '', page = '1', limit = '50' } = req.query;
 
-    if (!q || typeof q !== 'string') {
-      return res.json([]);
-    }
+    const result = await getTags({
+      query: String(q),
+      page: parseInt(String(page)),
+      limit: Math.min(parseInt(String(limit)), MAX_POSTS_PER_QUERY)
+    });
 
-    const suggestions = await suggestTags(q, 20);
-    res.json(suggestions);
+    res.json(result);
   } catch (error) {
-    console.error('Tag suggestion failed:', error);
-    res.status(500).json({ error: 'Failed to get tag suggestions' });
+    console.error('Get tags failed:', error);
+    res.status(500).json({ error: 'Failed to get tags' });
   }
 });
 

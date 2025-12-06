@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   TextField,
   Autocomplete,
@@ -8,6 +9,7 @@ import {
   Tooltip,
   Typography,
   Box,
+  Link,
 } from '@mui/material';
 import { Search as SearchIcon, Help as HelpIcon } from '@mui/icons-material';
 import { useTagSuggestions } from '../../hooks/useTagSuggest';
@@ -31,6 +33,7 @@ function getPrefix(word: string): string {
 }
 
 export default function SearchBar({ value, onChange, onSearch }: SearchBarProps) {
+  const navigate = useNavigate();
   const [inputValue, setInputValue] = useState(value);
   const [showHelp, setShowHelp] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -110,16 +113,28 @@ export default function SearchBar({ value, onChange, onSearch }: SearchBarProps)
   }, [inputValue, onSearch]);
 
   const syntaxHelp = (
-    <Box sx={{ p: 1, maxWidth: 300 }}>
+    <Box sx={{ p: 1, maxWidth: 320 }}>
       <Typography variant="subtitle2" gutterBottom>Search Syntax</Typography>
       <Typography variant="body2" component="div">
         <code>tag1 tag2</code> - Match all tags<br />
         <code>-tag</code> - Exclude tag<br />
         <code>~tag1 ~tag2</code> - Match any (OR)<br />
         <code>{'{'} tag1 tag2 {'}'}</code> - Group tags<br />
+        <code>tag*</code> - Wildcard match<br />
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           Press <kbd>/</kbd> to focus search
         </Typography>
+        <Link
+          component="button"
+          variant="caption"
+          onClick={() => {
+            setShowHelp(false);
+            navigate('/help');
+          }}
+          sx={{ mt: 0.5, display: 'block' }}
+        >
+          View full search help
+        </Link>
       </Typography>
     </Box>
   );
