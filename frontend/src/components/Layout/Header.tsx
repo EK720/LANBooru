@@ -12,11 +12,15 @@ import {
 import {
   Home as HomeIcon,
   Settings as SettingsIcon,
+  LightMode as LightModeIcon,
+  DarkMode as DarkModeIcon,
 } from '@mui/icons-material';
+import { useThemeMode } from '../../theme/ThemeContext';
 import SearchBar from '../Search/SearchBar';
 
 export default function Header() {
   const theme = useTheme();
+  const { mode, toggleTheme } = useThemeMode();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,7 +85,16 @@ export default function Header() {
           </Box>
         )}
 
-        {isHomePage && <Box sx={{ flexGrow: 1 }} />}
+        <Box sx={{ flexGrow: 1 }} />
+
+        <IconButton
+          color="inherit"
+          onClick={toggleTheme}
+          sx={{ p: 1 }}
+          title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+        </IconButton>
 
         <IconButton
           color="inherit"
