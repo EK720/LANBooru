@@ -45,6 +45,15 @@ import {
   getStats,
 } from '../api/client';
 
+function formatRating(rating: number | null | undefined): string {
+  switch (rating) {
+    case 1: return 'Safe';
+    case 2: return 'Questionable';
+    case 3: return 'Explicit';
+    default: return 'Undefined';
+  }
+}
+
 export default function ImagePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -604,11 +613,15 @@ export default function ImagePage() {
                     <strong>Artist:</strong> {image.artist}
                   </Typography>
                 )}
+                {image.artist && (<Typography variant="body2">
+                  <strong>Rating:</strong> {formatRating(image.rating)}
+                </Typography>
+                )}
                 {image.source && (
-                  <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                  <Typography variant="body2">
                     <strong>Source:</strong>{' '}
                     <a href={image.source} target="_blank" rel="noopener noreferrer">
-                      {image.source}
+                      {image.source.length > 100 ? image.source.slice(0, 100) + '...' : image.source}
                     </a>
                   </Typography>
                 )}
