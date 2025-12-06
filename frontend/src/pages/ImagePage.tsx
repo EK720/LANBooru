@@ -354,13 +354,13 @@ export default function ImagePage() {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          bgcolor: 'black',
+          bgcolor: 'imageViewer.background',
           position: 'relative',
         }}
       >
         {/* Top bar */}
         <Box
-          sx={{
+          sx={(theme) => ({
             position: 'absolute',
             top: 0,
             left: 0,
@@ -369,10 +369,10 @@ export default function ImagePage() {
             display: 'flex',
             justifyContent: 'space-between',
             zIndex: 1,
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)',
-          }}
+            background: theme.palette.imageViewer.gradient,
+          })}
         >
-          <IconButton onClick={() => goBack()} sx={{ color: 'white' }}>
+          <IconButton onClick={() => goBack()} sx={{ color: 'imageViewer.controls' }}>
             <BackIcon />
           </IconButton>
           <Stack direction="row" spacing={1}>
@@ -381,7 +381,7 @@ export default function ImagePage() {
               href={fileUrl}
               target="_blank"
               rel="noopener"
-              sx={{ color: 'white' }}
+              sx={{ color: 'imageViewer.controls' }}
             >
               <ExternalIcon />
             </IconButton>
@@ -389,7 +389,7 @@ export default function ImagePage() {
               component="a"
               href={fileUrl}
               download={image?.filename}
-              sx={{ color: 'white' }}
+              sx={{ color: 'imageViewer.controls' }}
             >
               <DownloadIcon />
             </IconButton>

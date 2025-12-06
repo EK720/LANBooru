@@ -1,5 +1,23 @@
 import { createTheme } from '@mui/material/styles';
 
+// Extend MUI theme with custom palette values
+declare module '@mui/material/styles' {
+  interface Palette {
+    imageViewer: {
+      background: string;
+      controls: string;
+      gradient: string;
+    };
+  }
+  interface PaletteOptions {
+    imageViewer?: {
+      background: string;
+      controls: string;
+      gradient: string;
+    };
+  }
+}
+
 const baseTheme = {
   typography: {
     fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
@@ -55,6 +73,11 @@ export const darkTheme = createTheme({
       secondary: '#94a3b8', // Slate 400
     },
     divider: '#334155', // Slate 700
+    imageViewer: {
+      background: '#000000',
+      controls: '#ffffff',
+      gradient: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)',
+    },
   },
   components: {
     ...baseTheme.components,
@@ -101,6 +124,11 @@ export const lightTheme = createTheme({
       secondary: '#64748b', // Slate 500
     },
     divider: '#e2e8f0', // Slate 200
+    imageViewer: {
+      background: '#ffffff',
+      controls: '#334155', // Slate 700
+      gradient: 'linear-gradient(to bottom, rgba(255,255,255,0.9) 0%, transparent 100%)',
+    },
   },
   components: {
     ...baseTheme.components,
