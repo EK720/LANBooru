@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import rateLimit from 'express-rate-limit';
 import { initializeDatabase } from './database/connection';
 import { scanAllFolders, cleanupDeletedFiles } from './services/scanner';
@@ -12,6 +13,7 @@ import foldersRouter from './routes/folders';
 import searchRouter from './routes/search';
 import imagesRouter from './routes/images';
 import statsRouter from './routes/stats';
+import liteRouter from './routes/lite';
 
 // Load environment variables
 dotenv.config();
@@ -22,6 +24,10 @@ const SCAN_INTERVAL_MINUTES = parseInt(process.env.SCAN_INTERVAL_MINUTES || '15'
 
 // Trust proxy to get real client IP through Docker
 app.set('trust proxy', 'loopback');
+
+// EJS templating for lite mode
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'templates'));
 
 // Middleware
 app.use(cors());
@@ -59,6 +65,7 @@ app.use('/api/folders', foldersRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/stats', statsRouter);
+app.use('/lite', liteRouter);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

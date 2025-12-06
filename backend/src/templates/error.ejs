@@ -1,0 +1,25 @@
+<%- include('partials/header') %>
+
+<style>
+  .error-page {
+    text-align: center;
+    padding: 60px 20px;
+  }
+  .error-page h2 {
+    font-size: 1.5rem;
+    margin-bottom: 16px;
+    color: #ff6b6b;
+  }
+  .error-page p {
+    color: #888;
+    margin-bottom: 20px;
+  }
+</style>
+
+<div class="error-page">
+  <h2>Error</h2>
+  <p><%= message %></p>
+  <a href="/lite/">Back to gallery</a>
+</div>
+
+<%- include('partials/footer') %>

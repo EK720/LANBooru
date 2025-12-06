@@ -72,13 +72,15 @@ router.get('/:id', async (req, res) => {
 /**
  * GET /api/images/:id/file
  * Serve the original image/video file with proper filename
+ * Query params: download=1 to force download with original filename
  */
 router.get('/:id/file', async (req, res) => {
   try {
     const { id } = req.params;
+    const isDownload = req.query.download === '1';
 
     const image = await queryOne<any>(
-      'SELECT file_path, file_type, file_hash FROM images WHERE id = ?',
+      'SELECT file_path, file_type, file_hash, filename FROM images WHERE id = ?',
       [parseInt(id)]
     );
 
@@ -93,9 +95,15 @@ router.get('/:id/file', async (req, res) => {
       return res.status(404).json({ error: 'File not found on disk' });
     }
 
-    // Set filename as {hash}.{ext} for uniqueness
-    const filename = `${image.file_hash}.${image.file_type}`;
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    // Set content-disposition based on download mode
+    if (isDownload) {
+      // Use original filename for downloads
+      res.setHeader('Content-Disposition', `attachment; filename="${image.file_hash}.${image.file_type}"`);
+    } else {
+      // Use hash-based filename for inline viewing
+      const filename = `${image.file_hash}.${image.file_type}`;
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    }
 
     // Send file
     res.sendFile(image.file_path);

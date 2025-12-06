@@ -1,0 +1,163 @@
+<%- include('partials/header') %>
+
+<%
+  const buildNavUrl = (id, pg, ps) => {
+    let url = `/lite/image/${id}`;
+    if (query) url += `?q=${encodeURIComponent(query)}&page=${pg}&pos=${ps}`;
+    return url;
+  };
+  const backUrl = query ? `/lite/?q=${encodeURIComponent(query)}&page=${page}` : '/lite/';
+%>
+
+<style>
+  /* Navigation - inline-block instead of flexbox */
+  .image-nav {
+    margin-bottom: 16px;
+  }
+  .image-nav a, .image-nav span {
+    display: inline-block;
+    padding: 8px 16px;
+    margin: 0 4px 4px 0;
+    border-radius: 4px;
+    background: #2a2a4e;
+  }
+  .image-nav a:hover { background: #3a3a6e; text-decoration: none; }
+  .image-nav .disabled { opacity: 0.5; }
+
+  /* Image display */
+  .image-container {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .image-container img, .image-container video {
+    max-width: 100%;
+    border-radius: 6px;
+  }
+
+  /* Metadata panel */
+  .image-meta {
+    background: #16213e;
+    padding: 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
+  .image-meta h2 {
+    font-size: 1rem;
+    margin-bottom: 12px;
+    color: #aaa;
+    font-weight: normal;
+  }
+
+  /* Definition list - float-based instead of grid */
+  .image-meta dl {
+    margin: 0;
+  }
+  .image-meta dt {
+    color: #888;
+    float: left;
+    clear: left;
+    width: 80px;
+    margin-bottom: 6px;
+  }
+  .image-meta dd {
+    margin-left: 90px;
+    margin-bottom: 6px;
+    word-break: break-all;
+  }
+
+  /* Tags - inline-block instead of flexbox */
+  .tags {
+    margin-top: 16px;
+  }
+  .tags a {
+    display: inline-block;
+    background: #2a2a4e;
+    padding: 4px 10px;
+    margin: 0 4px 4px 0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .tags a:hover { background: #3a3a6e; text-decoration: none; }
+
+  /* Download button */
+  .download-link {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: #4a9eff;
+    color: #fff;
+    border-radius: 4px;
+  }
+  .download-link:hover { background: #3a8eef; text-decoration: none; }
+</style>
+
+<nav class="image-nav">
+  <a href="<%= backUrl %>">&larr; Back to gallery</a>
+
+  <% if (prevId) { %>
+    <a href="<%= buildNavUrl(prevId, prevPage, prevPos) %>">&laquo; Previous</a>
+  <% } else { %>
+    <span class="disabled">&laquo; Previous</span>
+  <% } %>
+
+  <% if (nextId) { %>
+    <a href="<%= buildNavUrl(nextId, nextPage, nextPos) %>">Next &raquo;</a>
+  <% } else { %>
+    <span class="disabled">Next &raquo;</span>
+  <% } %>
+</nav>
+
+<div class="image-container">
+  <% if (['mp4', 'webm', 'mkv'].includes(image.file_type)) { %>
+    <video src="/api/images/<%= image.id %>/file" controls></video>
+  <% } else { %>
+    <a href="/api/images/<%= image.id %>/file" target="_blank">
+      <img src="/api/images/<%= image.id %>/file" alt="<%= image.filename %>">
+    </a>
+  <% } %>
+</div>
+
+<div class="image-meta">
+  <h2>Image Details</h2>
+  <dl>
+    <dt>Filename</dt>
+    <dd><%= image.filename %></dd>
+
+    <dt>Size</dt>
+    <dd><%= image.width %> x <%= image.height %> &mdash; <%= (image.file_size / 1024 / 1024).toFixed(2) %> MB</dd>
+
+    <dt>Type</dt>
+    <dd><%= image.file_type.toUpperCase() %></dd>
+
+    <% if (image.artist) { %>
+      <dt>Artist</dt>
+      <dd><a href="/lite/?q=artist:<%= encodeURIComponent(image.artist) %>"><%= image.artist %></a></dd>
+    <% } %>
+
+    <dt>Rating</dt>
+    <dd><%= image.rating === 1 ? 'Safe' : image.rating === 2 ? 'Questionable' : image.rating === 3 ? 'Explicit' : 'Undefined' %></dd>
+
+    <% if (image.source) { %>
+      <dt>Source</dt>
+      <dd><a href="<%= image.source %>" target="_blank" rel="noopener"><%= image.source.length > 60 ? image.source.slice(0, 60) + '...' : image.source %></a></dd>
+    <% } %>
+
+    <dt>Created</dt>
+    <dd><%= new Date(image.created_at).toLocaleString() %></dd>
+  </dl>
+
+  <a class="download-link" href="/api/images/<%= image.id %>/file?download=1">Download</a>
+</div>
+
+<% if (image.tags && image.tags.length > 0) { %>
+  <div class="image-meta">
+    <h2>Tags</h2>
+    <div class="tags">
+      <% image.tags.forEach(tag => { %>
+        <a href="/lite/?q=<%= encodeURIComponent(tag) %>"><%= tag %></a>
+      <% }); %>
+    </div>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

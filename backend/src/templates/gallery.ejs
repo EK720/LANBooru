@@ -1,0 +1,119 @@
+<%- include('partials/header') %>
+
+<% const buildUrl = (p) => query ? `/lite/?q=${encodeURIComponent(query)}&page=${p}` : `/lite/?page=${p}`; %>
+
+<style>
+  .gallery-info { margin-bottom: 16px; color: #aaa; }
+  .gallery-grid {
+    text-align: left;
+  }
+  .gallery-grid:after {
+    content: "";
+    display: table;
+    clear: both;
+  }
+  .gallery-item {
+    display: inline-block;
+    vertical-align: top;
+    width: 150px;
+    height: 150px;
+    margin: 6px;
+    border-radius: 6px;
+    background: #222;
+    text-align: center;
+  }
+  .gallery-item a {
+    display: block;
+    width: 100%;
+    height: 100%;
+    line-height: 150px;
+  }
+  .gallery-item img {
+    max-width: 150px;
+    max-height: 150px;
+    vertical-align: middle;
+  }
+  .pagination {
+    margin-top: 20px;
+  }
+  .pagination a, .pagination span {
+    display: inline-block;
+    padding: 6px 12px;
+    margin: 2px;
+    border-radius: 4px;
+    background: #2a2a4e;
+  }
+  .pagination a:hover { background: #3a3a6e; text-decoration: none; }
+  .pagination .current { background: #4a9eff; color: #fff; }
+  .pagination .disabled { opacity: 0.5; }
+  .empty-message {
+    text-align: center;
+    padding: 40px;
+    color: #888;
+  }
+</style>
+
+<% if (query) { %>
+  <p class="gallery-info">
+    Search: "<%= query %>" &mdash; <%= total %> result<%= total !== 1 ? 's' : '' %>
+  </p>
+<% } else { %>
+  <p class="gallery-info"><%= total %> image<%= total !== 1 ? 's' : '' %></p>
+<% } %>
+
+<% if (images.length === 0) { %>
+  <div class="empty-message">
+    <p>No images found.</p>
+    <% if (query) { %><p><a href="/lite/">Clear search</a></p><% } %>
+  </div>
+<% } else { %>
+  <div class="gallery-grid">
+    <% images.forEach((img, index) => { %>
+      <div class="gallery-item">
+        <a href="/lite/image/<%= img.id %>?q=<%= encodeURIComponent(query) %>&page=<%= page %>&pos=<%= index %>">
+          <img src="/api/images/<%= img.id %>/thumbnail?size=150" alt="">
+        </a>
+      </div>
+    <% }); %>
+  </div>
+
+  <% if (totalPages > 1) { %>
+    <nav class="pagination">
+      <% if (page > 1) { %>
+        <a href="<%= buildUrl(page - 1) %>">&laquo; Prev</a>
+      <% } else { %>
+        <span class="disabled">&laquo; Prev</span>
+      <% } %>
+
+      <%
+        let startPage = Math.max(1, page - 2);
+        let endPage = Math.min(totalPages, page + 2);
+        if (startPage > 1) {
+      %>
+        <a href="<%= buildUrl(1) %>">1</a>
+        <% if (startPage > 2) { %><span>...</span><% } %>
+      <% } %>
+
+      <% for (let p = startPage; p <= endPage; p++) { %>
+        <% if (p === page) { %>
+          <span class="current"><%= p %></span>
+        <% } else { %>
+          <a href="<%= buildUrl(p) %>"><%= p %></a>
+        <% } %>
+      <% } %>
+
+      <% if (endPage < totalPages) { %>
+        <% if (endPage < totalPages - 1) { %><span>...</span><% } %>
+        <a href="<%= buildUrl(totalPages) %>"><%= totalPages %></a>
+      <% } %>
+
+      <% if (page < totalPages) { %>
+        <a href="<%= buildUrl(page + 1) %>">Next &raquo;</a>
+      <% } else { %>
+        <span class="disabled">Next &raquo;</span>
+      <% } %>
+    </nav>
+  <% } %>
+<% } %>
+
+<%- include('partials/footer') %>

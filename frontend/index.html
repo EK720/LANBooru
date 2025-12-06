@@ -5,8 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/tag-icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LANBooru</title>
+    <!-- Fallback for browsers without JavaScript -->
+    <noscript>
+      <meta http-equiv="refresh" content="0;url=/lite/">
+    </noscript>
     <!-- Runtime config for Docker (generated at container startup) -->
     <script src="/config.js"></script>
+    <!-- Fallback for browsers where React fails to load -->
+    <script>
+      window.__REACT_MOUNTED__ = false;
+      setTimeout(function() {
+        if (!window.__REACT_MOUNTED__) {
+          window.location.href = '/lite/' + window.location.search;
+        }
+      }, 5000);
+    </script>
   </head>
   <body>
     <div id="root"></div>
