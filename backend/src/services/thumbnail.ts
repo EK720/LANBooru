@@ -50,19 +50,19 @@ async function extractVideoFrame(filePath: string, timestamp: number): Promise<B
 }
 
 /**
- * Check if an image is mostly black (average brightness below threshold)
+ * Check if an image is mostly black or mostly white (average brightness below threshold or above half threshold)
  */
-async function isFrameBlack(frameBuffer: Buffer, threshold: number = 30): Promise<boolean> {
+async function isFrameSolid(frameBuffer: Buffer, threshold: number = 30): Promise<boolean> {
   try {
     const { channels } = await sharp(frameBuffer).stats();
 
     // Calculate average brightness across all channels
     const avgBrightness = channels.reduce((sum, ch) => sum + ch.mean, 0) / channels.length;
 
-    return avgBrightness < threshold;
+    return (avgBrightness < threshold || avgBrightness > (255-(threshold/2)));
   } catch (error) {
     console.error('Failed to analyze frame brightness:', error);
-    return false; // If we can't determine, assume it's not black
+    return false; // If we can't determine, assume it's fine
   }
 }
 
@@ -189,9 +189,9 @@ export async function generateThumbnail(
 
       for (const timestamp of timestamps) {
         const frameBuffer = await extractVideoFrame(filePath, timestamp);
-        const isBlack = await isFrameBlack(frameBuffer);
+        const isSolid = await isFrameSolid(frameBuffer);
 
-        if (!isBlack) {
+        if (!isSolid) {
           imageBuffer = frameBuffer;
           break;
         }

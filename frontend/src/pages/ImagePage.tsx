@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -31,6 +31,10 @@ import {
   Delete as DeleteIcon,
   Save as SaveIcon,
   Close as CloseIcon,
+  PlayArrow as PlayIcon,
+  Pause as PauseIcon,
+  Stop as StopIcon,
+  Slideshow as SlideshowIcon,
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useImage } from '../hooks/useImage';
@@ -54,11 +58,26 @@ function formatRating(rating: number | null | undefined): string {
   }
 }
 
+const DEFAULT_SLIDESHOW_INTERVAL = parseFloat(import.meta.env.VITE_DEFAULT_SLIDESHOW_INTERVAL) || 3;
+
 export default function ImagePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const imageId = id ? parseInt(id, 10) : undefined;
+
+  // Slideshow state from URL params
+  const slideshowParam = searchParams.get('slideshow') === 'true';
+  const intervalParam = parseFloat(searchParams.get('interval') || '') || DEFAULT_SLIDESHOW_INTERVAL;
+  const [slideshowPlaying, setSlideshowPlaying] = useState(slideshowParam);
+  const [slideshowInterval, setSlideshowInterval] = useState(intervalParam);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Reset loaded state when image changes
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [imageId]);
 
   const { data: image, isLoading, error } = useImage(imageId);
   const { getAdjacentImages, getNavigationContext, appendToNavigationContext, removeFromNavigationContext } = useGalleryNavigation();
@@ -96,13 +115,54 @@ export default function ImagePage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Slideshow controls
+  const startSlideshow = useCallback(() => {
+    setSlideshowPlaying(true);
+    setSearchParams(params => {
+      params.set('slideshow', 'true');
+      params.set('interval', slideshowInterval.toString());
+      return params;
+    }, { replace: true });
+  }, [slideshowInterval, setSearchParams]);
+
+  const stopSlideshow = useCallback(() => {
+    setSlideshowPlaying(false);
+    setSearchParams(params => {
+      params.delete('slideshow');
+      params.delete('interval');
+      return params;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const toggleSlideshow = useCallback(() => {
+    if (slideshowPlaying) {
+      setSlideshowPlaying(false);
+    } else {
+      setSlideshowPlaying(true);
+    }
+  }, [slideshowPlaying]);
+
+  const updateInterval = useCallback((newInterval: number) => {
+    const clampedInterval = Math.max(0.5, Math.min(60, newInterval));
+    setSlideshowInterval(clampedInterval);
+    if (slideshowPlaying) {
+      setSearchParams(params => {
+        params.set('interval', clampedInterval.toString());
+        return params;
+      }, { replace: true });
+    }
+  }, [slideshowPlaying, setSearchParams]);
+
   const goToPrev = useCallback(() => {
     if (prev) navigate(`/image/${prev}`);
   }, [prev, navigate]);
 
   const goToNext = useCallback(async () => {
+    // Preserve slideshow params if active
+    const slideshowSuffix = slideshowPlaying ? `?slideshow=true&interval=${slideshowInterval}` : '';
+
     if (next) {
-      navigate(`/image/${next}`);
+      navigate(`/image/${next}${slideshowSuffix}`);
       return;
     }
 
@@ -124,7 +184,7 @@ export default function ImagePage() {
           const hasMore = result.page < result.total_pages;
           appendToNavigationContext(newIds, hasMore);
           // Navigate to first image of new page
-          navigate(`/image/${newIds[0]}`);
+          navigate(`/image/${newIds[0]}${slideshowSuffix}`);
         }
       } catch (err) {
         console.error('Failed to load more images:', err);
@@ -132,7 +192,7 @@ export default function ImagePage() {
         setIsLoadingMore(false);
       }
     }
-  }, [next, canLoadMore, isLoadingMore, navigate, getNavigationContext, appendToNavigationContext]);
+  }, [next, canLoadMore, isLoadingMore, navigate, getNavigationContext, appendToNavigationContext, slideshowPlaying, slideshowInterval]);
 
   const goBack = useCallback(() => {
     // Navigate back to the gallery with search query preserved
@@ -291,6 +351,17 @@ export default function ImagePage() {
     }
   }, [imageId, deleteFile, queryClient, next, prev, navigate, goBack, requirePassword, removeFromNavigationContext]);
 
+  // Slideshow auto-advance (only after image loads)
+  useEffect(() => {
+    if (!slideshowPlaying || !imageLoaded || (!next && !canLoadMore)) return;
+
+    const timer = setTimeout(() => {
+      goToNext();
+    }, slideshowInterval * 1000);
+
+    return () => clearTimeout(timer);
+  }, [slideshowPlaying, imageLoaded, next, canLoadMore, slideshowInterval, goToNext]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -313,12 +384,19 @@ export default function ImagePage() {
           e.preventDefault();
           goBack();
           break;
+        case ' ':
+          // Space to toggle slideshow play/pause when in slideshow mode
+          if (slideshowParam || slideshowPlaying) {
+            e.preventDefault();
+            toggleSlideshow();
+          }
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToPrev, goToNext, goBack]);
+  }, [goToPrev, goToNext, goBack, slideshowPlaying, slideshowParam, stopSlideshow, toggleSlideshow]);
 
   if (error) {
     return (
@@ -368,6 +446,7 @@ export default function ImagePage() {
             p: 1,
             display: 'flex',
             justifyContent: 'space-between',
+            alignItems: 'center',
             zIndex: 1,
             background: theme.palette.imageViewer.gradient,
           })}
@@ -375,7 +454,71 @@ export default function ImagePage() {
           <IconButton onClick={() => goBack()} sx={{ color: 'imageViewer.controls' }}>
             <BackIcon />
           </IconButton>
+
+          {/* Slideshow controls - shown when in slideshow mode */}
+          {(slideshowParam || slideshowPlaying) && (
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{
+                bgcolor: 'rgba(0,0,0,0.5)',
+                borderRadius: 2,
+                px: 1.5,
+                py: 0.5,
+              }}
+            >
+              <IconButton
+                onClick={toggleSlideshow}
+                size="small"
+                sx={{ color: 'imageViewer.controls' }}
+                title={slideshowPlaying ? 'Pause (Space)' : 'Play (Space)'}
+              >
+                {slideshowPlaying ? <PauseIcon /> : <PlayIcon />}
+              </IconButton>
+              <TextField
+                type="number"
+                size="small"
+                value={slideshowInterval}
+                onChange={(e) => updateInterval(parseFloat(e.target.value) || DEFAULT_SLIDESHOW_INTERVAL)}
+                inputProps={{ min: 0.5, max: 60, step: 0.5 }}
+                sx={{
+                  width: 70,
+                  '& .MuiInputBase-input': {
+                    color: 'white',
+                    py: 0.5,
+                    textAlign: 'center',
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'rgba(255,255,255,0.3)',
+                  },
+                }}
+              />
+              <Typography variant="body2" sx={{ color: 'imageViewer.controls' }}>
+                sec
+              </Typography>
+              <IconButton
+                onClick={stopSlideshow}
+                size="small"
+                sx={{ color: 'imageViewer.controls' }}
+                title="Stop slideshow"
+              >
+                <StopIcon />
+              </IconButton>
+            </Stack>
+          )}
+
           <Stack direction="row" spacing={1}>
+            {/* Start slideshow button - only show when not in slideshow mode and there's a next image */}
+            {!slideshowPlaying && !slideshowParam && (next || canLoadMore) && (
+              <IconButton
+                onClick={startSlideshow}
+                sx={{ color: 'imageViewer.controls' }}
+                title="Start slideshow"
+              >
+                <SlideshowIcon />
+              </IconButton>
+            )}
             <IconButton
               component="a"
               href={fileUrl}
@@ -420,6 +563,7 @@ export default function ImagePage() {
               controls
               autoPlay
               loop
+              onLoadedData={() => setImageLoaded(true)}
               style={{
                 maxWidth: '100%',
                 maxHeight: '100%',
@@ -430,6 +574,7 @@ export default function ImagePage() {
             <img
               src={fileUrl}
               alt={image?.filename}
+              onLoad={() => setImageLoaded(true)}
               style={{
                 maxWidth: '100%',
                 maxHeight: '100%',
