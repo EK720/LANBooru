@@ -4,6 +4,7 @@ import { execute, query, queryOne, transaction } from '../database/connection';
 import { extractMetadata } from './exif';
 import { generateThumbnail, calculateFileHash, deleteThumbnail } from './thumbnail';
 import { Folder, Image } from '../types';
+import { pluginRegistry } from '../index';
 
 const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.mp4', '.webm', '.mkv', '.webp'];
 const DUPLICATE_SCAN_ENABLED = (process.env.DUPLICATE_SCAN_ENABLED == "true" || process.env.DUPLICATE_SCAN_ENABLED == "1");
@@ -294,6 +295,27 @@ async function processFile(filePath: string): Promise<boolean> {
     }
 
     console.log(`Added: ${path.basename(filePath)} (${metadata.tags.length} tags) as ID ${imageId}`);
+
+    // Fire plugin hook for new image
+    pluginRegistry.runHook('onImageScanned', {
+      id: imageId,
+      file_path: filePath,
+      filename: path.basename(filePath),
+      file_type: path.extname(filePath).toLowerCase().substring(1),
+      file_size: stats.size,
+      file_hash: fileHash,
+      content_hash_600: contentHashes.hash600,
+      content_hash_800: contentHashes.hash800,
+      content_hash_1400: contentHashes.hash1400,
+      width: metadata.width || 0,
+      height: metadata.height || 0,
+      artist: metadata.artist || undefined,
+      rating: metadata.rating || undefined,
+      source: metadata.source || undefined,
+      created_at: metadata.date || new Date(),
+      updated_at: new Date(),
+    } as Image);
+
     return true;
   } catch (error) {
     console.error(`Failed to process ${filePath}:`, error);
@@ -361,6 +383,9 @@ export async function deleteImage(imageId: number): Promise<void> {
   );
 
   if (!image) return;
+
+  // Fire plugin hook before deletion
+  pluginRegistry.runHook('onImageDeleted', imageId);
 
   // Quick check: is this image a prime? (fast query on indexed column)
   const groupMemberIds = await query<{ image_id: number }>(

@@ -17,11 +17,12 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine
 
-# Install exiftool, ffmpeg, and other dependencies
+# Install exiftool, ffmpeg, docker-cli, and other dependencies
 RUN apk add --no-cache \
     exiftool \
     ffmpeg \
     perl \
+    docker-cli \
     && rm -rf /var/cache/apk/*
 
 WORKDIR /app
@@ -35,8 +36,8 @@ RUN npm ci --only=production
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
-# Create thumbnails directory
-RUN mkdir -p /app/thumbnails
+# Create thumbnails and plugins directories
+RUN mkdir -p /app/thumbnails /app/plugins
 
 EXPOSE 4000
 

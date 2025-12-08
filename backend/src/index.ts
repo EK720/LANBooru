@@ -15,12 +15,20 @@ import imagesRouter from './routes/images';
 import statsRouter from './routes/stats';
 import liteRouter from './routes/lite';
 
+// Plugin system
+import { PluginLoader, PluginRegistry, createPluginRoutes } from './plugins';
+
 // Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000');
 const SCAN_INTERVAL_MINUTES = parseInt(process.env.SCAN_INTERVAL_MINUTES || '15');
+const PLUGINS_DIR = process.env.PLUGINS_DIR || '/app/plugins';
+
+// Initialize plugin system
+const pluginLoader = new PluginLoader({ pluginsDir: PLUGINS_DIR });
+export const pluginRegistry = new PluginRegistry(pluginLoader);
 
 // Trust proxy to get real client IP through Docker
 app.set('trust proxy', 'loopback');
@@ -65,6 +73,7 @@ app.use('/api/folders', foldersRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/plugins', createPluginRoutes(pluginRegistry));
 app.use('/lite', liteRouter);
 
 // Error handling
@@ -95,6 +104,13 @@ async function start() {
     // Initialize database
     await initializeDatabase();
     console.log('Database initialized');
+
+    // Load plugins
+    await pluginRegistry.loadPlugins();
+    await pluginRegistry.registerRoutes(app);
+
+    // Check health of container/external plugins
+    await pluginRegistry.checkHealth();
 
     // Run initial scan
     console.log('Running initial scan...');

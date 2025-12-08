@@ -12,6 +12,9 @@ yarn-error.log*
 /frontend/dist
 /backend/dist
 
+# Plugin stuff
+/backend/plugins
+
 # Environment variables
 .env
 .env.local

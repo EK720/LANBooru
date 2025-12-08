@@ -48,6 +48,7 @@ import {
   setEditPassword,
   getStats,
 } from '../api/client';
+import { usePlugins, PluginButton } from '../plugins';
 
 function formatRating(rating: number | null | undefined): string {
   switch (rating) {
@@ -81,6 +82,7 @@ export default function ImagePage() {
 
   const { data: image, isLoading, error } = useImage(imageId);
   const { getAdjacentImages, getNavigationContext, appendToNavigationContext, removeFromNavigationContext } = useGalleryNavigation();
+  const { getButtonsForLocation } = usePlugins();
 
   // Fetch config to check if password is required
   const { data: stats } = useQuery({
@@ -509,6 +511,16 @@ export default function ImagePage() {
           )}
 
           <Stack direction="row" spacing={1}>
+            {/* Plugin buttons */}
+            {image && getButtonsForLocation('image-actions').map((btn) => (
+              <PluginButton
+                key={`${btn.pluginId}-${btn.id}`}
+                button={btn}
+                image={image}
+                variant="icon"
+              />
+            ))}
+
             {/* Start slideshow button - only show when not in slideshow mode and there's a next image */}
             {!slideshowPlaying && !slideshowParam && (next || canLoadMore) && (
               <IconButton

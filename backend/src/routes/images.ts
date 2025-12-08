@@ -5,6 +5,7 @@ import { deleteImage } from '../services/scanner';
 import { writeTagsToFile } from '../services/exif';
 import { requireEditPassword } from '../middleware/security';
 import { ImageWithTags } from '../types';
+import { pluginRegistry } from '../index';
 import fs from 'fs/promises';
 
 const router = Router();
@@ -182,9 +183,12 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
     }
 
     // Normalize tags: trim, lowercase, remove empty
-    const newTags = new Set(
-      tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0)
-    );
+    let normalizedTags = tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0);
+
+    // Allow plugins to transform tags before saving
+    normalizedTags = await pluginRegistry.runTransformHook('onBeforeTagUpdate', normalizedTags, imageId);
+
+    const newTags = new Set(normalizedTags);
 
     // Get existing tags
     const existingTagRows = await query<{ name: string }>(
@@ -255,6 +259,9 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
       console.error('Failed to write tags to file:', fileError);
       // Don't fail the request, DB is already updated
     }
+
+    // Fire plugin hook after tags are saved
+    pluginRegistry.runHook('onAfterTagUpdate', imageId, finalTags);
 
     res.json({ success: true, tags: finalTags });
   } catch (error) {
