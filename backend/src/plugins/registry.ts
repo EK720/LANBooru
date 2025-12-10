@@ -15,6 +15,7 @@ import type {
   HookName,
   HookContext,
   PluginHooks,
+  ImageUpdates,
 } from './types';
 import { PluginLoader } from './loader';
 import {
@@ -25,6 +26,8 @@ import {
   getContainerStatus,
   getBackendVolumeMounts,
 } from './container';
+import { query, execute } from '../database/connection';
+import { addTagsToImage, removeTagsFromImage } from '../services/scanner';
 
 export class PluginRegistry {
   private plugins: Map<string, LoadedPlugin> = new Map();
@@ -174,6 +177,66 @@ export class PluginRegistry {
   }
 
   /**
+   * Update an image's metadata. Available to plugins via HookContext.
+   */
+  private async updateImage(imageId: number, updates: ImageUpdates): Promise<void> {
+    // Handle tag updates
+    if (updates.tags !== undefined) {
+      // Normalize tags
+      const newTags = [...new Set(
+        updates.tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0)
+      )];
+      const newTagSet = new Set(newTags);
+
+      // Get existing tags
+      const existingTagRows = await query<{ name: string }>(
+        `SELECT t.name FROM tags t
+         JOIN image_tags it ON t.id = it.tag_id
+         WHERE it.image_id = ?`,
+        [imageId]
+      );
+      const existingTags = new Set(existingTagRows.map(t => t.name));
+
+      // Compute diff and apply
+      const tagsToAdd = newTags.filter(t => !existingTags.has(t));
+      const tagsToRemove = [...existingTags].filter(t => !newTagSet.has(t));
+
+      if (tagsToAdd.length > 0) {
+        await addTagsToImage(imageId, tagsToAdd);
+      }
+      if (tagsToRemove.length > 0) {
+        await removeTagsFromImage(imageId, tagsToRemove);
+      }
+    }
+
+    // Handle simple field updates
+    const fieldUpdates: string[] = [];
+    const fieldValues: any[] = [];
+
+    if (updates.artist !== undefined) {
+      fieldUpdates.push('artist = ?');
+      fieldValues.push(updates.artist);
+    }
+    if (updates.rating !== undefined) {
+      fieldUpdates.push('rating = ?');
+      fieldValues.push(updates.rating);
+    }
+    if (updates.source !== undefined) {
+      fieldUpdates.push('source = ?');
+      fieldValues.push(updates.source);
+    }
+
+    if (fieldUpdates.length > 0) {
+      fieldUpdates.push('updated_at = NOW()');
+      fieldValues.push(imageId);
+      await execute(
+        `UPDATE images SET ${fieldUpdates.join(', ')} WHERE id = ?`,
+        fieldValues
+      );
+    }
+  }
+
+  /**
    * Run all registered hooks for an event (side-effects only, no return value).
    * Use this for: onImageScanned, onAfterTagUpdate, onImageDeleted, onRouteRegister
    */
@@ -189,6 +252,7 @@ export class PluginRegistry {
       const context: HookContext = {
         pluginId,
         config: plugin.config,
+        updateImage: this.updateImage.bind(this),
       };
 
       try {
@@ -225,6 +289,7 @@ export class PluginRegistry {
       const context: HookContext = {
         pluginId,
         config: plugin.config,
+        updateImage: this.updateImage.bind(this),
       };
 
       try {
@@ -319,6 +384,7 @@ export class PluginRegistry {
       type: p.manifest.type,
       enabled: p.enabled,
       status: p.status,
+      hasScript: !!p.manifest.frontend?.script,
       buttons: p.manifest.frontend?.buttons || [],
       config: p.manifest.config || [],
       currentConfig: p.config,

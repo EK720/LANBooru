@@ -82,7 +82,7 @@ export default function ImagePage() {
 
   const { data: image, isLoading, error } = useImage(imageId);
   const { getAdjacentImages, getNavigationContext, appendToNavigationContext, removeFromNavigationContext } = useGalleryNavigation();
-  const { getButtonsForLocation } = usePlugins();
+  const { getButtonsForLocation, setTagEditorCallback, setCurrentImage } = usePlugins();
 
   // Fetch config to check if password is required
   const { data: stats } = useQuery({
@@ -116,6 +116,37 @@ export default function ImagePage() {
   const [deleteFile, setDeleteFile] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Register plugin callbacks
+  useEffect(() => {
+    // Update plugin context with current image
+    setCurrentImage(image || null);
+
+    // Register tag editor callback for plugins
+    setTagEditorCallback((tags: string[], mode: 'append' | 'replace') => {
+      if (!image) return;
+
+      let newTags: string;
+      if (mode === 'replace') {
+        newTags = tags.join(' ');
+      } else {
+        // Append: combine existing with new, avoiding duplicates
+        const existingSet = new Set(image.tags);
+        const combined = [...image.tags, ...tags.filter(t => !existingSet.has(t))];
+        newTags = combined.join(' ');
+      }
+
+      setEditedTags(newTags);
+      setEditError(null);
+      setIsEditing(true);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      setCurrentImage(null);
+      setTagEditorCallback(null);
+    };
+  }, [image, setCurrentImage, setTagEditorCallback]);
 
   // Slideshow controls
   const startSlideshow = useCallback(() => {

@@ -323,23 +323,27 @@ async function processFile(filePath: string): Promise<boolean> {
   }
 }
 
-// Remove a tag from an image
-export async function removeTagFromImage(imageId: number, tagName: string): Promise<void> {
+// Remove tags from an image
+export async function removeTagsFromImage(imageId: number, tagNames: string[]): Promise<void> {
+  if (tagNames.length === 0) return;
+
   await transaction(async (conn) => {
-    const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
-    if (tagRows.length > 0) {
-      const tagId = tagRows[0].id;
-      const [result] = await conn.query<any>('DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?', [imageId, tagId]);
-      if (result.affectedRows > 0) {
-        await conn.query('UPDATE tags SET count = count - 1 WHERE id = ?', [tagId]);
-        await conn.query('DELETE FROM tags WHERE id = ? AND count <= 0', [tagId]);
+    for (const tagName of tagNames) {
+      const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
+      if (tagRows.length > 0) {
+        const tagId = tagRows[0].id;
+        const [result] = await conn.query<any>('DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?', [imageId, tagId]);
+        if (result.affectedRows > 0) {
+          await conn.query('UPDATE tags SET count = count - 1 WHERE id = ?', [tagId]);
+          await conn.query('DELETE FROM tags WHERE id = ? AND count <= 0', [tagId]);
+        }
       }
     }
   });
 }
 
 // Add tags to an image
-async function addTagsToImage(imageId: number, tagNames: string[]): Promise<void> {
+export async function addTagsToImage(imageId: number, tagNames: string[]): Promise<void> {
   await transaction(async (conn) => {
     for (const tagName of tagNames) {
       // Insert tag if it doesn't exist (start at count 0)
@@ -427,7 +431,7 @@ export async function deleteImage(imageId: number): Promise<void> {
       // Remove duplicate_image tag from remaining member (if any)
 	  const remainingMemberId = groupMemberIds.find(m => m.image_id !== imageId)?.image_id;
       if (remainingMemberId) {
-        await removeTagFromImage(remainingMemberId, 'duplicate_image');
+        await removeTagsFromImage(remainingMemberId, ['duplicate_image']);
       }
     }
   } else {
@@ -476,7 +480,7 @@ export async function deleteImage(imageId: number): Promise<void> {
         [nonPrimeEntry.prime_id]
       );
       // Remove duplicate_image tag from the orphaned prime
-      await removeTagFromImage(nonPrimeEntry.prime_id, 'duplicate_image');
+      await removeTagsFromImage(nonPrimeEntry.prime_id, ['duplicate_image']);
     }
   }
 

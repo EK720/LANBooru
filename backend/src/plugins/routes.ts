@@ -4,6 +4,8 @@
  * API endpoints for plugin management and proxying requests to plugin services.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { Router, Request, Response } from 'express';
 import type { PluginRegistry } from './registry';
 import type { PluginConfig } from './types';
@@ -104,6 +106,41 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
       status: updated.status,
       error: updated.error,
     });
+  });
+
+  /**
+   * GET /api/plugins/:pluginId/script
+   * Serve the plugin's frontend script, if it has one
+   */
+  router.get('/:pluginId/script', (req: Request, res: Response) => {
+    const { pluginId } = req.params;
+    const plugin = registry.get(pluginId);
+
+    if (!plugin) {
+      res.status(404).json({ error: `Plugin not found: ${pluginId}` });
+      return;
+    }
+
+    const scriptPath = plugin.manifest.frontend?.script;
+    if (!scriptPath) {
+      res.status(204).send();
+      return;
+    }
+
+    // Resolve and validate path
+    const fullPath = path.resolve(plugin.extractedPath, scriptPath);
+    if (!fullPath.startsWith(plugin.extractedPath)) {
+      res.status(400).json({ error: 'Invalid script path' });
+      return;
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      res.status(404).json({ error: `Frontend script not found: ${scriptPath}` });
+      return;
+    }
+
+    res.type('application/javascript');
+    res.sendFile(fullPath);
   });
 
   /**

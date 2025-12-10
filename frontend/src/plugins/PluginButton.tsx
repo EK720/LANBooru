@@ -60,7 +60,7 @@ export function PluginButton({
   onSuccess,
   onError,
 }: PluginButtonProps) {
-  const { callEndpoint } = usePlugins();
+  const { callEndpoint, invokeHandler } = usePlugins();
   const [isLoading, setIsLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -81,18 +81,14 @@ export function PluginButton({
         button.method || 'POST',
         {
           imageId: image.id,
-          image: {
-            id: image.id,
-            filename: image.filename,
-            file_path: image.file_path,
-            file_hash: image.file_hash,
-            width: image.width,
-            height: image.height,
-            tags: image.tags,
-          },
+          image,
         }
       );
 
+      // Invoke the plugin's frontend handler (if it has one)
+      await invokeHandler(button.pluginId, button.id, result);
+
+      // Also call the optional prop callback
       onSuccess?.(result);
     } catch (error) {
       console.error(`Plugin ${button.pluginId} action failed:`, error);
@@ -100,7 +96,7 @@ export function PluginButton({
     } finally {
       setIsLoading(false);
     }
-  }, [button, image, callEndpoint, confirmOpen, onSuccess, onError]);
+  }, [button, image, callEndpoint, invokeHandler, confirmOpen, onSuccess, onError]);
 
   const Icon = getIcon(button.icon);
   const tooltipText = button.tooltip || button.label;

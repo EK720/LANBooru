@@ -93,6 +93,7 @@ export interface PluginHooksConfig {
 }
 
 export interface PluginFrontendConfig {
+  script?: string; // Path to frontend.js file for custom handlers
   buttons?: PluginButton[];
   settingsComponent?: string; // Future: custom settings UI
 }
@@ -157,9 +158,19 @@ export type HookName =
   | 'onImageDeleted'
   | 'onRouteRegister';
 
+/** Fields that can be updated via updateImage */
+export interface ImageUpdates {
+  tags?: string[];
+  artist?: string;
+  rating?: number;
+  source?: string;
+}
+
 export interface HookContext {
   pluginId: string;
   config: PluginConfig;
+  /** Update an image's metadata (tags, artist, rating, source, etc.) */
+  updateImage?: (imageId: number, updates: ImageUpdates) => Promise<void>;
 }
 
 export type HookFunction<T extends any[] = any[], R = void> = (
@@ -203,6 +214,7 @@ export interface PluginInfo {
   type: PluginType;
   enabled: boolean;
   status: PluginStatus;
+  hasScript: boolean;
   buttons: PluginButton[];
   config: ConfigField[];
   currentConfig: PluginConfig;

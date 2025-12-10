@@ -234,9 +234,12 @@ my-service.lbplugin (tar.gz)
 
 ```json
 "frontend": {
-  "buttons": [ ... ]    // See Button Configuration below
+  "script": "./frontend.js",  // Optional: custom frontend handlers
+  "buttons": [ ... ]          // See Button Configuration below
 }
 ```
+
+The `script` field points to a JavaScript file that handles button responses. See [Frontend Scripts](#frontend-scripts) for details.
 
 ### Plugin Configuration Schema
 
@@ -460,7 +463,7 @@ Plugins are distributed as `.lbplugin` files (tar.gz archives).
 
 ```bash
 # From your plugin directory
-tar -czvf my-plugin.lbplugin manifest.json hooks.js docker/
+tar -czvf my-plugin.lbplugin manifest.json *.js docker/
 ```
 
 Or if your files are in a subdirectory:
@@ -534,9 +537,17 @@ tar -czvf tag-formatter.lbplugin manifest.json hooks.js
 
 ## Example: AI Tagger Container Plugin
 
-<!-- TODO: Add complete AI tagger example with Python service -->
+A complete container plugin example is included with LANBooru at `example-plugins/ai-tagger.lbplugin`.
 
-See the `examples/ai-tagger/` directory for a complete implementation.
+It demonstrates:
+- Python Flask server with ONNX model inference
+- GPU support for faster processing
+- Video support (extracts frames at 25%, 50%, 75%)
+- Automatic model download from HuggingFace
+- Frontend script that opens the tag editor with results
+- User-configurable thresholds and tag limits
+
+Extract and examine the `.lbplugin` file to see the full implementation.
 
 ---
 
@@ -587,13 +598,174 @@ The backend URL is accessible within the Docker network as `backend:4000` for co
 
 ### Container not starting
 
-<!-- TODO: Document container troubleshooting -->
+1. Check Docker is accessible: `docker version`
+2. View container logs: `docker logs plugin-{pluginId}`
+3. Verify the network exists: `docker network ls | grep booru`
+4. Ensure GPU drivers are installed if `gpu: true` is set
+5. Check the Dockerfile builds manually: `docker build -t test ./docker`
 
 ### API requests failing
 
 1. Verify the `api.baseUrl` is reachable from the backend container
 2. Check the plugin service logs
 3. Ensure the endpoint path is correct
+
+---
+
+## Frontend Scripts
+
+Frontend scripts let your plugin execute custom JavaScript in the browser when a button action completes. This enables plugins to interact with the LANBooru UI without modifying core code.
+
+### Basic Structure
+
+**frontend.js:**
+```javascript
+module.exports = {
+  // Called when any button action succeeds
+  onSuccess: function(response, api) {
+    console.log('Action completed:', response);
+  },
+
+  // Called when any button action fails
+  onError: function(error, api) {
+    api.showMessage('Action failed: ' + error.message, 'error');
+  },
+
+  // Per-button handlers (keyed by button id from manifest)
+  handlers: {
+    'auto-tag': function(response, api) {
+      // Handle the auto-tag button specifically
+      if (response.success && response.data?.tags) {
+        api.openTagEditor(response.data.tags, response.data.tag_mode || 'append');
+      }
+    }
+  }
+};
+```
+
+### Plugin API
+
+The `api` object passed to handlers provides these methods:
+
+#### `api.openTagEditor(tags, mode)`
+
+Opens the tag editor with the specified tags.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tags` | string[] | Array of tags to populate |
+| `mode` | 'append' \| 'replace' | How to handle existing tags (default: 'append') |
+
+```javascript
+// Replace all tags
+api.openTagEditor(['1girl', 'blue_hair'], 'replace');
+
+// Add to existing tags (avoids duplicates)
+api.openTagEditor(['smile', 'outdoors'], 'append');
+```
+
+#### `api.showMessage(message, severity)`
+
+Shows a notification message to the user.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `message` | string | The message to display |
+| `severity` | 'success' \| 'error' \| 'warning' \| 'info' | Message type (default: 'info') |
+
+```javascript
+api.showMessage('Tags generated successfully!', 'success');
+api.showMessage('Could not connect to AI service', 'error');
+```
+
+#### `api.refreshImage()`
+
+Refreshes the current image data from the server. Useful after modifying tags or other metadata.
+
+```javascript
+// After saving tags via your own API
+api.refreshImage();
+```
+
+#### `api.navigate(path)`
+
+Navigates to a different page in LANBooru.
+
+```javascript
+api.navigate('/');  // Go to home
+api.navigate('/image/123');  // Go to specific image
+api.navigate('/search?q=blue_hair');  // Search
+```
+
+#### `api.getImage()`
+
+Returns the current image data, or `null` if not on an image page.
+
+```javascript
+const image = api.getImage();
+if (image) {
+  console.log('Current image:', image.id, image.filename);
+  console.log('Current tags:', image.tags);
+  console.log('File path:', image.file_path);
+}
+```
+
+The image object includes all fields: `id`, `filename`, `file_path`, `file_hash`, `file_type`, `file_size`, `width`, `height`, `tags`, `artist`, `rating`, `source`, `created_at`, `updated_at`, and `duplicates` info.
+
+### Handler Resolution
+
+When a button is clicked and the action succeeds:
+
+1. If `handlers[buttonId]` exists, it's called
+2. Otherwise, if `onSuccess` exists, it's called
+3. If neither exists, nothing happens (silent success)
+
+For errors:
+1. If `onError` exists, it's called
+2. Otherwise, the error is logged to console
+
+### Example: AI Tagger Frontend Script
+
+```javascript
+// frontend.js for AI tagger plugin
+module.exports = {
+  handlers: {
+    'auto-tag': function(response, api) {
+      if (!response.success) {
+        api.showMessage('Tagging failed: ' + (response.message || 'Unknown error'), 'error');
+        return;
+      }
+
+      const data = response.data;
+      if (!data?.tags || data.tags.length === 0) {
+        api.showMessage('No tags detected in image', 'warning');
+        return;
+      }
+
+      // Open tag editor with AI-generated tags
+      const mode = data.tag_mode || 'append';
+      api.openTagEditor(data.tags, mode);
+
+      // Show confidence info
+      const tagCount = data.tags.length;
+      const topTag = data.tags[0];
+      const topConf = data.confidence?.[topTag];
+      if (topConf) {
+        api.showMessage(
+          `Generated ${tagCount} tags. Top: "${topTag}" (${(topConf * 100).toFixed(0)}%)`,
+          'success'
+        );
+      } else {
+        api.showMessage(`Generated ${tagCount} tags`, 'success');
+      }
+    }
+  },
+
+  onError: function(error, api) {
+    api.showMessage('AI tagging failed: ' + error.message, 'error');
+  }
+};
+```
 
 ---
 
@@ -605,3 +777,5 @@ The backend URL is accessible within the Docker network as `backend:4000` for co
 4. **Document your config options** with clear descriptions
 5. **Test with different image types** (jpg, png, gif, webp, video)
 6. **Keep builtin hooks fast** - heavy work should use container plugins
+7. **Use frontend scripts** to create interactive plugin experiences
+8. **Provide user feedback** via `api.showMessage()` for long operations

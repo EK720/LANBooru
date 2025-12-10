@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { query, queryOne, execute, transaction } from '../database/connection';
+import { query, queryOne, execute } from '../database/connection';
 import { getThumbnailPath, resizeThumbnail, calculateFileHash, deleteThumbnail, generateThumbnail } from '../services/thumbnail';
-import { deleteImage } from '../services/scanner';
+import { deleteImage, addTagsToImage, removeTagsFromImage } from '../services/scanner';
 import { writeTagsToFile } from '../services/exif';
 import { requireEditPassword } from '../middleware/security';
 import { ImageWithTags } from '../types';
@@ -199,35 +199,15 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
     );
     const existingTags = new Set(existingTagRows.map(t => t.name));
 
-    // Calculate diff
+    // Calculate diff and apply changes
     const tagsToAdd = [...newTags].filter(t => !existingTags.has(t));
     const tagsToRemove = [...existingTags].filter(t => !newTags.has(t));
 
-    // Only run transaction if there are changes
-    if (tagsToAdd.length > 0 || tagsToRemove.length > 0) {
-      await transaction(async (conn) => {
-        // Remove tags that were deleted
-        for (const tagName of tagsToRemove) {
-          const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
-          if (tagRows.length > 0) {
-            const tagId = tagRows[0].id;
-            await conn.query('DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?', [imageId, tagId]);
-            await conn.query('UPDATE tags SET count = count - 1 WHERE id = ?', [tagId]);
-            await conn.query('DELETE FROM tags WHERE id = ? AND count <= 0', [tagId]);
-          }
-        }
-
-        // Add new tags
-        for (const tagName of tagsToAdd) {
-          await conn.query('INSERT IGNORE INTO tags (name, count) VALUES (?, 0)', [tagName]);
-          const [tagRows] = await conn.query<any[]>('SELECT id FROM tags WHERE name = ?', [tagName]);
-          if (tagRows.length > 0) {
-            const tagId = tagRows[0].id;
-            await conn.query('INSERT INTO image_tags (image_id, tag_id) VALUES (?, ?)', [imageId, tagId]);
-            await conn.query('UPDATE tags SET count = count + 1 WHERE id = ?', [tagId]);
-          }
-        }
-      });
+    if (tagsToRemove.length > 0) {
+      await removeTagsFromImage(imageId, tagsToRemove);
+    }
+    if (tagsToAdd.length > 0) {
+      await addTagsToImage(imageId, tagsToAdd);
     }
 
     // Write tags to file (filters out internal tags like duplicate_image)

@@ -54,6 +54,9 @@ function getNetworkName(): string {
       console.log(`Detected Docker network: ${detectedNetworkName}`);
       return detectedNetworkName;
     }
+	
+	// This should make the plugin loader error out, there's some sort of problem if it can't find the booru network
+	return '';
   } catch (err) {
     // Fallback to common compose naming convention
     console.warn('Could not detect Docker network, using fallback');
