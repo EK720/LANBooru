@@ -506,4 +506,23 @@ export class PluginRegistry {
   async registerRoutes(app: Application): Promise<void> {
     await this.runHook('onRouteRegister', app);
   }
+
+  /**
+   * Shutdown all container plugins
+   */
+  async shutdown(): Promise<void> {
+    const containerPlugins = [...this.plugins.values()].filter(
+      p => p.manifest.type === 'container' && p.enabled
+    );
+
+    if (containerPlugins.length === 0) {
+      return;
+    }
+
+    console.log('Stopping plugin containers...');
+    for (const plugin of containerPlugins) {
+      console.log(`  Stopping ${plugin.manifest.id}...`);
+      await stopPluginContainer(plugin.manifest.id);
+    }
+  }
 }

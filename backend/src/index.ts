@@ -139,28 +139,25 @@ async function start() {
 }
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-
+async function shutdown() {
   if (scanInterval) {
     clearInterval(scanInterval);
   }
 
+  await pluginRegistry.shutdown();
   await cleanupExif();
 
   process.exit(0);
+}
+
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  await shutdown();
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
-
-  if (scanInterval) {
-    clearInterval(scanInterval);
-  }
-
-  await cleanupExif();
-
-  process.exit(0);
+  await shutdown();
 });
 
 // Start the server
