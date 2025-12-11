@@ -8,7 +8,6 @@ import React, { useState, useCallback } from 'react';
 import {
   IconButton,
   Button,
-  Tooltip,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -120,18 +119,15 @@ export function PluginButton({
   if (variant === 'icon') {
     return (
       <>
-        <Tooltip title={tooltipText}>
-          <span>
-            <IconButton
-              onClick={handleClick}
-              disabled={isLoading}
-              size="small"
-              color="inherit"
-            >
-              {isLoading ? <CircularProgress size={20} /> : <Icon />}
-            </IconButton>
-          </span>
-        </Tooltip>
+        <IconButton
+          onClick={handleClick}
+          disabled={isLoading}
+          size="small"
+          color="inherit"
+          title={tooltipText}
+        >
+          {isLoading ? <CircularProgress size={20} /> : <Icon />}
+        </IconButton>
         {confirmDialog}
       </>
     );
@@ -139,17 +135,16 @@ export function PluginButton({
 
   return (
     <>
-      <Tooltip title={tooltipText}>
-        <Button
-          onClick={handleClick}
-          disabled={isLoading}
-          variant={variant === 'outlined' ? 'outlined' : 'text'}
-          startIcon={isLoading ? <CircularProgress size={16} /> : <Icon />}
-          size="small"
-        >
-          {button.label}
-        </Button>
-      </Tooltip>
+      <Button
+        onClick={handleClick}
+        disabled={isLoading}
+        variant={variant === 'outlined' ? 'outlined' : 'text'}
+        startIcon={isLoading ? <CircularProgress size={16} /> : <Icon />}
+        size="small"
+        title={tooltipText}
+      >
+        {button.label}
+      </Button>
       {confirmDialog}
     </>
   );
