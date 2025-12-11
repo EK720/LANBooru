@@ -110,7 +110,8 @@ export async function generateMultiResolutionDHash(imageBuffer: Buffer): Promise
 }> {
   try {
     // Create base sharp instance - decodes image ONCE
-    const baseImage = sharp(imageBuffer);
+    // Use failOn: 'none' to handle truncated/corrupted images gracefully
+    const baseImage = sharp(imageBuffer, { failOn: 'none' });
 
     // Resize to 3 target sizes in parallel (clone() reuses decoded data)
     // Must create intermediate buffers - Sharp's resize() overrides, doesn't chain
@@ -210,7 +211,7 @@ export async function generateThumbnail(
     else {
       // Convert WEBP to JPEG first if needed, or read the file
       if (ext === '.webp') {
-        imageBuffer = await sharp(filePath).jpeg({ quality: 90 }).toBuffer();
+        imageBuffer = await sharp(filePath, { failOn: 'none' }).jpeg({ quality: 90 }).toBuffer();
       } else {
         imageBuffer = await fs.readFile(filePath);
       }
@@ -225,7 +226,8 @@ export async function generateThumbnail(
       : EMPTY_HASHES;
 
     // Resize so largest dimension becomes THUMBNAIL_SIZE, preserving aspect ratio
-    await sharp(imageBuffer)
+    // Use failOn: 'none' to handle truncated/corrupted images gracefully
+    await sharp(imageBuffer, { failOn: 'none' })
       .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, {
         fit: 'inside',  // Fit within box, preserving aspect ratio
         withoutEnlargement: true  // Don't upscale small images
