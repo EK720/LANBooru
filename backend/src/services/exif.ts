@@ -42,6 +42,20 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
       artist = metadata.Artist;
       width = metadata.ImageWidth;
       height = metadata.ImageHeight;
+    } else if (ext === '.png' || ext === '.gif' || ext === '.webp') {
+      // PNG/GIF/WebP: Read from Subject field (standard PNG field)
+      const subject = metadata.Subject;
+      if (subject) {
+        if (Array.isArray(subject)) {
+          tags = subject.map(t => String(t).trim()).filter(t => t.length > 0);
+        } else if (typeof subject === 'string') {
+          tags = subject.split(';').map(t => t.trim()).filter(t => t.length > 0);
+        }
+      }
+
+      artist = metadata.Artist;
+      width = metadata.ImageWidth;
+      height = metadata.ImageHeight;
     } else if (ext === '.mp4' || ext === '.webm' || ext === '.mkv') {
       // Video: Read from Genre field (semicolon-separated)
       const genre = metadata.Genre;
@@ -135,8 +149,8 @@ export async function writeTagsToFile(filePath: string, tags: string[]): Promise
       await exiftool.write(filePath, {
         Genre: tagString
       } as any, ['-overwrite_original']);
-    } else if (ext === '.png' || ext === '.webp') {
-      // PNG/WebP: Write to XMP Subject
+    } else if (ext === '.png' || ext === '.gif' || ext === '.webp') {
+      // PNG/GIF/WebP: Write to Subject field
       await exiftool.write(filePath, {
         'Subject': writableTags
       }, ['-overwrite_original']);

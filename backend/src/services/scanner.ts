@@ -6,7 +6,7 @@ import { generateThumbnail, calculateFileHash, deleteThumbnail } from './thumbna
 import { Folder, Image } from '../types';
 import { pluginRegistry } from '../index';
 
-const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.mp4', '.webm', '.mkv', '.webp'];
+const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.webm', '.webp'];
 const DUPLICATE_SCAN_ENABLED = (process.env.DUPLICATE_SCAN_ENABLED == "true" || process.env.DUPLICATE_SCAN_ENABLED == "1");
 
 console.log(`Duplicate scan running? ${DUPLICATE_SCAN_ENABLED ? "true" : "false"}`);
