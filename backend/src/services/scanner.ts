@@ -157,6 +157,11 @@ async function processFile(filePath: string): Promise<boolean> {
     // Generate thumbnail and get multi-resolution dHashes
     const contentHashes = await generateThumbnail(filePath, fileHash);
 
+    // Truncate source to fit VARCHAR(255) - don't save truncated value back to file
+    const truncatedSource = metadata.source && metadata.source.length > 255
+      ? metadata.source.substring(0, 252) + '...'
+      : metadata.source || null;
+
     // Insert image first (we need the ID to compare with duplicates)
     const result = await execute(
       `INSERT INTO images
@@ -175,7 +180,7 @@ async function processFile(filePath: string): Promise<boolean> {
         metadata.height || 0,
         metadata.artist || null,
         metadata.rating || null,
-        metadata.source || null,
+        truncatedSource,
         metadata.date || new Date()
       ]
     );
