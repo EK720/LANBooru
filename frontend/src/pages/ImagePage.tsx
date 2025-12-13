@@ -62,6 +62,24 @@ function formatRating(rating: number | null | undefined): string {
   }
 }
 
+// Matches URLs with or without protocol (e.g., example.com/path, https://example.com)
+const URL_REGEX = /[-a-zA-Z0-9@:%._+~#=]{1,256}\.(?=\D)[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_+.~#?&\/=]*)/;
+
+/**
+ * Check if a string looks like a URL
+ */
+function isUrl(text: string): boolean {
+  return URL_REGEX.test(text);
+}
+
+/**
+ * Get a proper href for a URL (adds https:// if missing)
+ */
+function getHref(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+}
+
 const DEFAULT_SLIDESHOW_INTERVAL = parseFloat(import.meta.env.VITE_DEFAULT_SLIDESHOW_INTERVAL) || 3;
 
 export default function ImagePage() {
@@ -852,11 +870,15 @@ export default function ImagePage() {
                   </Typography>
                 )}
                 {image.source && (
-                  <Typography variant="body2">
+                  <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
                     <strong>Source:</strong>{' '}
-                    <a href={image.source} target="_blank" rel="noopener noreferrer">
-                      {image.source.length > 100 ? image.source.slice(0, 100) + '...' : image.source}
-                    </a>
+                    {isUrl(image.source) ? (
+                      <a href={getHref(image.source)} target="_blank" rel="noopener noreferrer">
+                        {image.source}
+                      </a>
+                    ) : (
+                      image.source
+                    )}
                   </Typography>
                 )}
               </Stack>
