@@ -258,13 +258,13 @@ export default function AdminPage() {
   return (
     <Box sx={{ p: 3 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h4">
+        <Typography variant="h4" sx={{ flexShrink: 0 }}>
           Admin Settings
         </Typography>
 
         {/* Settings plugin buttons (right-aligned) */}
         {getButtonsForLocation('settings').length > 0 && (
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end" sx={{ minWidth: 0 }}>
             {getButtonsForLocation('settings').map((btn) => (
               <PluginButton key={`${btn.pluginId}-${btn.id}`} button={btn} variant="outlined" />
             ))}

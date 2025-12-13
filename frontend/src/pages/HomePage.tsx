@@ -254,7 +254,7 @@ export default function HomePage() {
               </Typography>
             </Stack>
           ) : !isLoading ? (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
               Showing all images ({totalCount.toLocaleString()} total)
             </Typography>
           ) : (
@@ -263,7 +263,7 @@ export default function HomePage() {
 
           {/* Gallery toolbar - plugin buttons (right-aligned) */}
           {getButtonsForLocation('gallery-toolbar').length > 0 && (
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end">
               {getButtonsForLocation('gallery-toolbar').map((btn) => (
                 <PluginButton key={`${btn.pluginId}-${btn.id}`} button={btn} variant="outlined" />
               ))}

@@ -589,7 +589,7 @@ export default function ImagePage() {
 
           <Stack direction="row" spacing={1}>
             {/* Plugin buttons for top bar */}
-            {image && getButtonsForLocation('image-topbar').map((btn) => (
+            {image && getButtonsForLocation('image-toolbar').map((btn) => (
               <PluginButton
                 key={`${btn.pluginId}-${btn.id}`}
                 button={btn}

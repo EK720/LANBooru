@@ -214,7 +214,7 @@ export class PluginLoader {
       }
 
       // Validate buttons if present
-      const validLocations = new Set(['image-topbar', 'image-sidebar', 'gallery-toolbar', 'header', 'settings']);
+      const validLocations = new Set(['image-toolbar', 'image-sidebar', 'gallery-toolbar', 'header', 'settings']);
       if (manifest.frontend?.buttons) {
         for (const button of manifest.frontend.buttons) {
           if (!button.id || !button.label || !button.location || !button.endpoint) {
