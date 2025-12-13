@@ -573,7 +573,7 @@ External plugins don't have access to the filesystem. Instead, fetch images via 
 
 ```python
 # In your external plugin
-image_url = f"http://lanbooru-backend:4000/api/images/{image_id}/file"
+image_url = f"http://lanbooru-backend:4000/api/image/{image_id}/file"
 response = requests.get(image_url)
 image_data = response.content
 ```

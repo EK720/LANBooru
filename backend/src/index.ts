@@ -55,7 +55,7 @@ const apiLimiter = rateLimit({
     // These get hit frequently during normal browsing
     // Note: req.path doesn't include /api since middleware is mounted there
     return (
-      req.path.match(/^\/images\/\d+\/thumbnail/) !== null ||
+      req.path.match(/^\/image\/\d+\/thumbnail/) !== null ||
       req.path === '/search/tags/suggest'
     );
   }
@@ -71,7 +71,7 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/folders', foldersRouter);
 app.use('/api/search', searchRouter);
-app.use('/api/images', imagesRouter);
+app.use('/api/image', imagesRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/plugins', createPluginRoutes(pluginRegistry));
 app.use('/lite', liteRouter);

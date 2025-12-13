@@ -71,7 +71,7 @@
     <% images.forEach((img, index) => { %>
       <div class="gallery-item">
         <a href="/lite/image/<%= img.id %>?q=<%= encodeURIComponent(query) %>&page=<%= page %>&pos=<%= index %>">
-          <img src="/api/images/<%= img.id %>/thumbnail?size=150" alt="">
+          <img src="/api/image/<%= img.id %>/thumbnail?size=150" alt="">
         </a>
       </div>
     <% }); %>

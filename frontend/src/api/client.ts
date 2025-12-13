@@ -70,17 +70,17 @@ export async function getTagSuggestions(prefix: string): Promise<TagSuggestion[]
 
 // Single image
 export async function getImage(id: number): Promise<ImageWithTags> {
-  return fetchJSON<ImageWithTags>(`${API_BASE}/images/${id}`);
+  return fetchJSON<ImageWithTags>(`${API_BASE}/image/${id}`);
 }
 
 // Image URLs (not fetched, just constructed)
 export function getThumbnailUrl(id: number, size?: number): string {
   const params = size ? `?size=${size}` : '';
-  return `${API_BASE}/images/${id}/thumbnail${params}`;
+  return `${API_BASE}/image/${id}/thumbnail${params}`;
 }
 
 export function getImageFileUrl(id: number): string {
-  return `${API_BASE}/images/${id}/file`;
+  return `${API_BASE}/image/${id}/file`;
 }
 
 // Stats
@@ -151,7 +151,7 @@ export async function updateImageTags(id: number, tags: string[]): Promise<{ suc
     headers['X-Edit-Password'] = password;
   }
 
-  const response = await fetch(`${API_BASE}/images/${id}/tags`, {
+  const response = await fetch(`${API_BASE}/image/${id}/tags`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({ tags }),
@@ -179,7 +179,7 @@ export async function deleteImageById(id: number, deleteFile: boolean = true): P
     headers['X-Edit-Password'] = password;
   }
 
-  const response = await fetch(`${API_BASE}/images/${id}?deleteFile=${deleteFile}`, {
+  const response = await fetch(`${API_BASE}/image/${id}?deleteFile=${deleteFile}`, {
     method: 'DELETE',
     headers,
   });

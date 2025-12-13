@@ -11,7 +11,7 @@ import fs from 'fs/promises';
 const router = Router();
 
 /**
- * GET /api/images/:id
+ * GET /api/image/:id
  * Get image details by ID
  */
 router.get('/:id', async (req, res) => {
@@ -71,7 +71,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * GET /api/images/:id/file
+ * GET /api/image/:id/file
  * Serve the original image/video file with proper filename
  * Query params: download=1 to force download with original filename
  */
@@ -115,7 +115,7 @@ router.get('/:id/file', async (req, res) => {
 });
 
 /**
- * GET /api/images/:id/thumbnail?size=150
+ * GET /api/image/:id/thumbnail?size=150
  * Serve image thumbnail (optionally resized on-the-fly)
  */
 router.get('/:id/thumbnail', async (req, res) => {
@@ -161,7 +161,7 @@ router.get('/:id/thumbnail', async (req, res) => {
 });
 
 /**
- * PATCH /api/images/:id/tags
+ * PATCH /api/image/:id/tags
  * Update tags for an image (requires edit password)
  * Body: { tags: string[] }
  * Efficiently updates only changed tags in DB, then writes to file

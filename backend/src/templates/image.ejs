@@ -109,10 +109,10 @@
 
 <div class="image-container">
   <% if (['mp4', 'webm', 'mkv'].includes(image.file_type)) { %>
-    <video src="/api/images/<%= image.id %>/file" controls></video>
+    <video src="/api/image/<%= image.id %>/file" controls></video>
   <% } else { %>
-    <a href="/api/images/<%= image.id %>/file" target="_blank">
-      <img src="/api/images/<%= image.id %>/file" alt="<%= image.filename %>">
+    <a href="/api/image/<%= image.id %>/file" target="_blank">
+      <img src="/api/image/<%= image.id %>/file" alt="<%= image.filename %>">
     </a>
   <% } %>
 </div>
@@ -146,7 +146,7 @@
     <dd><%= new Date(image.created_at).toLocaleString() %></dd>
   </dl>
 
-  <a class="download-link" href="/api/images/<%= image.id %>/file?download=1">Download</a>
+  <a class="download-link" href="/api/image/<%= image.id %>/file?download=1">Download</a>
 </div>
 
 <% if (image.tags && image.tags.length > 0) { %>
