@@ -26,7 +26,7 @@ import {
   getContainerStatus,
   getBackendVolumeMounts,
 } from './container';
-import { query, execute } from '../database/connection';
+import { query, queryOne, execute } from '../database/connection';
 import { addTagsToImage, removeTagsFromImage } from '../services/scanner';
 
 export class PluginRegistry {
@@ -253,6 +253,7 @@ export class PluginRegistry {
         pluginId,
         config: plugin.config,
         updateImage: this.updateImage.bind(this),
+        db: { query, queryOne },
       };
 
       try {
@@ -290,6 +291,7 @@ export class PluginRegistry {
         pluginId,
         config: plugin.config,
         updateImage: this.updateImage.bind(this),
+        db: { query, queryOne },
       };
 
       try {

@@ -22,7 +22,7 @@ import { usePlugins } from './PluginContext';
 
 interface PluginButtonProps {
   button: PluginButtonType;
-  image: ImageWithTags;
+  image?: ImageWithTags;  // Optional - not available for header/gallery buttons
   variant?: 'icon' | 'text' | 'outlined';
   onSuccess?: (result: any) => void;
   onError?: (error: Error) => void;
@@ -78,10 +78,7 @@ export function PluginButton({
         button.pluginId,
         button.endpoint,
         button.method || 'POST',
-        {
-          imageId: image.id,
-          image,
-        }
+        image ? { imageId: image.id, image } : undefined
       );
 
       // Invoke the plugin's frontend handler (if it has one)

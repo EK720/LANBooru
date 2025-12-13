@@ -166,11 +166,21 @@ export interface ImageUpdates {
   source?: string;
 }
 
+/** Database query helpers available to plugins */
+export interface PluginDbHelpers {
+  /** Execute a SELECT query and return results */
+  query: <T = any>(sql: string, params?: any[]) => Promise<T[]>;
+  /** Execute a SELECT query and return first result or null */
+  queryOne: <T = any>(sql: string, params?: any[]) => Promise<T | null>;
+}
+
 export interface HookContext {
   pluginId: string;
   config: PluginConfig;
   /** Update an image's metadata (tags, artist, rating, source, etc.) */
   updateImage?: (imageId: number, updates: ImageUpdates) => Promise<void>;
+  /** Database query helpers (read-only queries recommended) */
+  db: PluginDbHelpers;
 }
 
 export type HookFunction<T extends any[] = any[], R = void> = (
