@@ -179,6 +179,13 @@ export class PluginLoader {
         return null;
       }
 
+      // Validate plugin ID format (Docker-safe: lowercase alphanumeric and hyphens, max 64 chars)
+      const validIdRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+      if (manifest.id.length > 64 || !validIdRegex.test(manifest.id)) {
+        console.error(`Invalid plugin ID "${manifest.id}": must be 1-64 characters, lowercase alphanumeric and hyphens only, cannot start/end with hyphen`);
+        return null;
+      }
+
       // Validate type
       if (!['builtin', 'container', 'external'].includes(manifest.type)) {
         console.error(`Invalid plugin type: ${manifest.type}`);
