@@ -172,18 +172,10 @@ router.get('/:id/thumbnail', async (req, res) => {
 router.patch('/:id', requireEditPassword, async (req, res) => {
   try {
     const { id } = req.params;
-    const { tags, rating } = req.body;
-
-    // Validate inputs
-    if (tags !== undefined && !Array.isArray(tags)) {
-      return res.status(400).json({ success: false, error: 'Tags must be an array' });
-    }
-    if (rating !== undefined && rating !== null && (typeof rating !== 'number' || ![1, 2, 3].includes(rating))) {
-      return res.status(400).json({ success: false, error: 'Rating must be 1, 2, 3, or null' });
-    }
+    const { tags: rawTags, rating: rawRating } = req.body;
 
     // At least one field must be provided
-    if (tags === undefined && rating === undefined) {
+    if (rawTags === undefined && rawRating === undefined) {
       return res.status(400).json({ success: false, error: 'Must provide tags and/or rating' });
     }
 
@@ -197,10 +189,14 @@ router.patch('/:id', requireEditPassword, async (req, res) => {
     let finalTags: string[] | undefined;
     let finalRating: number | null | undefined;
 
-    // Process tags if provided
-    if (tags !== undefined) {
+    // Validate and process tags if provided
+    if (rawTags !== undefined) {
+      if (!Array.isArray(rawTags)) {
+        return res.status(400).json({ success: false, error: 'Tags must be an array' });
+      }
+
       // Normalize tags: trim, lowercase, remove empty
-      let normalizedTags = tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0);
+      let normalizedTags = rawTags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0);
 
       // Extract rating:xxx metatags
       let ratingFromTag: number | null | undefined;
@@ -216,7 +212,7 @@ router.patch('/:id', requireEditPassword, async (req, res) => {
         return true;
       });
 
-      // Apply rating from metatag (explicit rating param will override below)
+      // Apply rating from metatag (rating field will override below)
       if (ratingFromTag !== undefined) {
         finalRating = ratingFromTag;
       }
@@ -248,9 +244,12 @@ router.patch('/:id', requireEditPassword, async (req, res) => {
       finalTags = [...newTags];
     }
 
-    // Rating field overrides any rating:xxx metatag
-    if (rating !== undefined) {
-      finalRating = rating;
+    // Validate and process rating if provided (overrides any rating:xxx metatag)
+    if (rawRating !== undefined) {
+      if (rawRating !== null && (typeof rawRating !== 'number' || ![1, 2, 3].includes(rawRating))) {
+        return res.status(400).json({ success: false, error: 'Rating must be 1, 2, 3, or null' });
+      }
+      finalRating = rawRating;
     }
 
     // Update rating in DB if changed
