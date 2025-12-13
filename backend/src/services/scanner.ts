@@ -246,11 +246,11 @@ async function processFile(filePath: string): Promise<boolean> {
 
     if (DUPLICATE_SCAN_ENABLED) {
       // Check for duplicates by matching ANY of the 3 content hashes
-      // Order by resolution DESC so first result is highest quality
+      // Order by resolution DESC, then file_size DESC as tie-breaker
       const duplicates = await query<Image>(
-        `SELECT id, width, height, file_path FROM images
+        `SELECT id, width, height, file_size, file_path FROM images
          WHERE (content_hash_600 = ? OR content_hash_800 = ? OR content_hash_1400 = ?)
-         ORDER BY (width * height) DESC`,
+         ORDER BY (width * height) DESC, file_size DESC`,
         [contentHashes.hash600, contentHashes.hash800, contentHashes.hash1400]
       );
 
@@ -270,7 +270,7 @@ async function processFile(filePath: string): Promise<boolean> {
         if (existingGroupItem) {
           // Get existing prime's details
           const existingPrime = await queryOne<Image>(
-            'SELECT id, width, height, file_path FROM images WHERE id = ?',
+            'SELECT id, width, height, file_size, file_path FROM images WHERE id = ?',
             [existingGroupItem.prime_id]
           );
 
@@ -295,7 +295,11 @@ async function processFile(filePath: string): Promise<boolean> {
             const newResolution = newImage.width * newImage.height;
             const primeResolution = existingPrime.width * existingPrime.height;
 
-            if (newResolution > primeResolution) {
+            // New image is better if: higher resolution, or same resolution but larger filesize
+            const newIsBetter = newResolution > primeResolution ||
+              (newResolution === primeResolution && newImage.file_size > existingPrime.file_size);
+
+            if (newIsBetter) {
               // New image is better, becomes new prime
               primeImage = newImage;
               //console.log(`New prime: ID ${primeImage.id} (${primeImage.width}x${primeImage.height}) replaces ID ${existingPrime.id}`);
@@ -462,9 +466,9 @@ export async function deleteImage(imageId: number): Promise<void> {
       // 2+ non-prime members remain: get their details to find new prime
       const ids = groupMemberIds.map(m => m.image_id).filter(id => id !== imageId);
       const members = await query<Image>(
-        `SELECT id, width, height FROM images
+        `SELECT id, width, height, file_size FROM images
          WHERE id IN (${ids.map(() => '?').join(',')})
-         ORDER BY (width * height) DESC`,
+         ORDER BY (width * height) DESC, file_size DESC`,
         ids
       );
 
