@@ -86,10 +86,10 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
   });
 
   /**
-   * POST /api/plugins/:pluginId/health
+   * GET /api/plugins/:pluginId/health
    * Trigger a health check for a specific plugin
    */
-  router.post('/:pluginId/health', async (req: Request, res: Response) => {
+  router.get('/:pluginId/health', async (req: Request, res: Response) => {
     const { pluginId } = req.params;
     const plugin = registry.get(pluginId);
 
