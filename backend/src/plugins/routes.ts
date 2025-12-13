@@ -6,7 +6,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import type { PluginRegistry } from './registry';
 import type { PluginConfig } from './types';
 
@@ -145,14 +145,21 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
 
   /**
    * ALL /api/plugins/:pluginId/call/*
-   * Proxy requests to plugin services
+   * Proxy requests to plugin services (container/external) or
+   * fall through to routes registered by builtin plugins
    * The /call/ prefix distinguishes plugin API calls from management endpoints
    */
-  router.all('/:pluginId/call/*', async (req: Request, res: Response) => {
+  router.all('/:pluginId/call/*', async (req: Request, res: Response, next: NextFunction) => {
     const { pluginId } = req.params;
-    // Extract the path after /call/
-    const subPath = req.params[0] || '';
+    const plugin = registry.get(pluginId);
 
+    // For builtin plugins, let Express continue to routes they registered via onRouteRegister
+    if (plugin?.manifest.type === 'builtin') {
+      return next();
+    }
+
+    // For container/external plugins, proxy the request
+    const subPath = req.params[0] || '';
     await registry.proxyRequest(pluginId, subPath, req, res);
   });
 
