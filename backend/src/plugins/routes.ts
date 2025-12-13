@@ -17,7 +17,9 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
    * GET /api/plugins
    * List all plugins with their status and frontend buttons
    */
-  router.get('/', (req: Request, res: Response) => {
+  router.get('/', async (req: Request, res: Response) => {
+    // Refresh health status before returning
+    await registry.checkHealth();
     const plugins = registry.getAll();
     res.json({ plugins });
   });
