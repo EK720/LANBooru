@@ -188,6 +188,9 @@ export default function AdminPage() {
 
   const { getButtonsForLocation } = usePlugins();
 
+  // Track which plugins are being toggled (for optimistic UI)
+  const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(new Set());
+
   // Folders query
   const { data: folders, isLoading: foldersLoading } = useQuery({
     queryKey: ['folders'],
@@ -239,8 +242,43 @@ export default function AdminPage() {
   const pluginUpdateMutation = useMutation({
     mutationFn: ({ pluginId, updates }: { pluginId: string; updates: { enabled?: boolean; config?: PluginConfig } }) =>
       updatePlugin(pluginId, updates),
-    onSuccess: () => {
+    onMutate: async ({ pluginId, updates }) => {
+      // Only do optimistic update for enable/disable toggle
+      if (updates.enabled === undefined) return;
+
+      setTogglingPlugins(prev => new Set(prev).add(pluginId));
+
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['plugins'] });
+
+      // Snapshot previous value
+      const previousPlugins = queryClient.getQueryData<PluginInfo[]>(['plugins']);
+
+      // Optimistically update
+      queryClient.setQueryData<PluginInfo[]>(['plugins'], old =>
+        old?.map(p => p.id === pluginId ? { ...p, enabled: updates.enabled! } : p)
+      );
+
+      return { previousPlugins };
+    },
+    onError: (_err, { pluginId }, context) => {
+      // Revert on error
+      if (context?.previousPlugins) {
+        queryClient.setQueryData(['plugins'], context.previousPlugins);
+      }
+      setTogglingPlugins(prev => {
+        const next = new Set(prev);
+        next.delete(pluginId);
+        return next;
+      });
+    },
+    onSettled: (_data, _err, { pluginId }) => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
+      setTogglingPlugins(prev => {
+        const next = new Set(prev);
+        next.delete(pluginId);
+        return next;
+      });
     },
   });
 
@@ -461,15 +499,21 @@ export default function AdminPage() {
 
                       <FormControlLabel
                         control={
-                          <Switch
-                            checked={plugin.enabled}
-                            onChange={(e) =>
-                              pluginUpdateMutation.mutate({
-                                pluginId: plugin.id,
-                                updates: { enabled: e.target.checked },
-                              })
-                            }
-                          />
+                          <Box sx={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                            <Switch
+                              checked={plugin.enabled}
+                              onChange={(e) =>
+                                pluginUpdateMutation.mutate({
+                                  pluginId: plugin.id,
+                                  updates: { enabled: e.target.checked },
+                                })
+                              }
+                              disabled={togglingPlugins.has(plugin.id)}
+                            />
+                            {togglingPlugins.has(plugin.id) && (
+                              <CircularProgress size={20} sx={{ position: 'absolute', left: '50%', ml: '-10px' }} />
+                            )}
+                          </Box>
                         }
                         label="Enabled"
                       />
