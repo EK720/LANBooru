@@ -57,6 +57,7 @@ export class PluginLoader {
 
     const plugins: LoadedPlugin[] = [];
     const savedConfig = this.loadSavedConfig();
+    const seenIds = new Map<string, string>(); // id -> filename that first used it
 
     // Find all .lbplugin files
     const files = fs.readdirSync(this.pluginsDir)
@@ -66,6 +67,15 @@ export class PluginLoader {
       try {
         const plugin = await this.loadPlugin(file, savedConfig);
         if (plugin) {
+          // Check for duplicate IDs
+          const existingFile = seenIds.get(plugin.manifest.id);
+          if (existingFile) {
+            console.error(
+              `Plugin ${file} has duplicate ID "${plugin.manifest.id}" (already used by ${existingFile}). Skipping.`
+            );
+            continue;
+          }
+          seenIds.set(plugin.manifest.id, file);
           plugins.push(plugin);
         }
       } catch (error) {
@@ -201,6 +211,21 @@ export class PluginLoader {
       if ((manifest.type === 'container' || manifest.type === 'external') && !manifest.api) {
         console.error(`Plugin ${manifest.id} of type ${manifest.type} missing api config`);
         return null;
+      }
+
+      // Validate buttons if present
+      const validLocations = new Set(['image-topbar', 'image-sidebar', 'gallery-toolbar', 'header', 'settings']);
+      if (manifest.frontend?.buttons) {
+        for (const button of manifest.frontend.buttons) {
+          if (!button.id || !button.label || !button.location || !button.endpoint) {
+            console.error(`Plugin ${manifest.id}: button missing required fields (id, label, location, endpoint)`);
+            return null;
+          }
+          if (!validLocations.has(button.location)) {
+            console.error(`Plugin ${manifest.id}: button "${button.id}" has invalid location "${button.location}". Valid: ${[...validLocations].join(', ')}`);
+            return null;
+          }
+        }
       }
 
       return manifest;
