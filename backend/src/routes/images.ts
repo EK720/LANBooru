@@ -6,6 +6,7 @@ import { writeTagsToFile } from '../services/exif';
 import { requireEditPassword } from '../middleware/security';
 import { ImageWithTags } from '../types';
 import { pluginRegistry } from '../index';
+import { RATING_MAP } from '../services/search';
 import fs from 'fs/promises';
 
 const router = Router();
@@ -185,6 +186,25 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
     // Normalize tags: trim, lowercase, remove empty
     let normalizedTags = tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0);
 
+    // Extract rating:xxx tags and update rating field
+    let newRating: number | undefined;
+    normalizedTags = normalizedTags.filter(tag => {
+      if (tag.startsWith('rating:')) {
+        const ratingValue = tag.slice(7); // 'rating:'.length = 7
+        const mappedRating = RATING_MAP[ratingValue];
+        if (mappedRating !== undefined) {
+          newRating = mappedRating;
+        }
+        return false; // Remove rating tags from the list
+      }
+      return true;
+    });
+
+    // Update rating if a rating tag was found
+    if (newRating !== undefined) {
+      await execute('UPDATE images SET rating = ?, updated_at = NOW() WHERE id = ?', [newRating, imageId]);
+    }
+
     // Allow plugins to transform tags before saving
     normalizedTags = await pluginRegistry.runTransformHook('onBeforeTagUpdate', normalizedTags, imageId);
 
@@ -251,7 +271,41 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
 });
 
 /**
- * DELETE /api/images/:id
+ * PATCH /api/image/:id/rating
+ * Update rating for an image (requires edit password)
+ * Body: { rating: number | null } (1=Safe, 2=Questionable, 3=Explicit, null=Undefined)
+ */
+router.patch('/:id/rating', requireEditPassword, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating } = req.body;
+
+    // Validate rating value
+    if (rating !== null && (typeof rating !== 'number' || ![1, 2, 3].includes(rating))) {
+      return res.status(400).json({ success: false, error: 'Rating must be 1, 2, 3, or null' });
+    }
+
+    const imageId = parseInt(id);
+    const image = await queryOne<{ id: number }>('SELECT id FROM images WHERE id = ?', [imageId]);
+
+    if (!image) {
+      return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+
+    await execute(
+      'UPDATE images SET rating = ?, updated_at = NOW() WHERE id = ?',
+      [rating, imageId]
+    );
+
+    res.json({ success: true, rating });
+  } catch (error) {
+    console.error('Failed to update rating:', error);
+    res.status(500).json({ success: false, error: 'Failed to update rating' });
+  }
+});
+
+/**
+ * DELETE /api/image/:id
  * Delete an image (requires edit password)
  * Query params: deleteFile=true to also delete the file from disk (default: true)
  */

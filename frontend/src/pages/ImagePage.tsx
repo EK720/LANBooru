@@ -18,6 +18,8 @@ import {
   FormControlLabel,
   Checkbox,
   Alert,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -43,6 +45,7 @@ import {
   getImageFileUrl,
   searchImages,
   updateImageTags,
+  updateImageRating,
   deleteImageById,
   getEditPassword,
   setEditPassword,
@@ -102,6 +105,7 @@ export default function ImagePage() {
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [editedTags, setEditedTags] = useState('');
+  const [editedRating, setEditedRating] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -137,6 +141,7 @@ export default function ImagePage() {
       }
 
       setEditedTags(newTags);
+      setEditedRating(image.rating ?? null);
       setEditError(null);
       setIsEditing(true);
     });
@@ -256,17 +261,18 @@ export default function ImagePage() {
     // Retry the pending action
     if (pendingAction === 'save') {
       // Will be called after state updates
-      setTimeout(() => saveTags(), 0);
+      setTimeout(() => saveEdits(), 0);
     } else if (pendingAction === 'delete') {
       setTimeout(() => confirmDelete(), 0);
     }
     setPendingAction(null);
   }, [passwordInput, pendingAction]);
 
-  // Start editing tags - no password required yet
+  // Start editing tags and rating - no password required yet
   const startEditing = useCallback(() => {
     if (!image) return;
     setEditedTags(image.tags.join(' '));
+    setEditedRating(image.rating ?? null);
     setEditError(null);
     setIsEditing(true);
   }, [image]);
@@ -275,12 +281,13 @@ export default function ImagePage() {
   const cancelEditing = useCallback(() => {
     setIsEditing(false);
     setEditedTags('');
+    setEditedRating(null);
     setEditError(null);
   }, []);
 
-  // Save edited tags - prompts for password if needed
-  const saveTags = useCallback(async () => {
-    if (!imageId) return;
+  // Save edited tags and rating - prompts for password if needed
+  const saveEdits = useCallback(async () => {
+    if (!imageId || !image) return;
 
     // Check if we have a password, prompt if not (skip if password not required)
     if (requirePassword && !getEditPassword()) {
@@ -289,17 +296,37 @@ export default function ImagePage() {
       return;
     }
 
+    // Split by whitespace, filter empty, sanitize
+    const newTags = editedTags
+      .split(/\s+/)
+      .map(t => t.trim().replace(/[;,]/g, ''))
+      .filter(t => t.length > 0);
+
+    // Check what actually changed (existing tags are already sorted from DB)
+    const tagsChanged = JSON.stringify(image.tags) !== JSON.stringify([...newTags].sort());
+    const ratingChanged = editedRating !== (image.rating ?? null);
+
+    // If nothing changed, just close the editor
+    if (!tagsChanged && !ratingChanged) {
+      setIsEditing(false);
+      setEditedTags('');
+      setEditedRating(null);
+      return;
+    }
+
     setIsSaving(true);
     setEditError(null);
 
     try {
-      // Split by whitespace, filter empty, sanitize
-      const tags = editedTags
-        .split(/\s+/)
-        .map(t => t.trim().replace(/[;,]/g, ''))
-        .filter(t => t.length > 0);
+      // Only update tags if they changed
+      if (tagsChanged) {
+        await updateImageTags(imageId, newTags);
+      }
 
-      await updateImageTags(imageId, tags);
+      // Only update rating if it changed
+      if (ratingChanged) {
+        await updateImageRating(imageId, editedRating);
+      }
 
       // Invalidate cache to refetch
       queryClient.invalidateQueries({ queryKey: ['image', imageId] });
@@ -307,8 +334,9 @@ export default function ImagePage() {
 
       setIsEditing(false);
       setEditedTags('');
+      setEditedRating(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save tags';
+      const message = err instanceof Error ? err.message : 'Failed to save';
       // If password was wrong, prompt for new password
       if (message === 'Invalid password') {
         setPendingAction('save');
@@ -320,7 +348,7 @@ export default function ImagePage() {
     } finally {
       setIsSaving(false);
     }
-  }, [imageId, editedTags, queryClient, requirePassword]);
+  }, [imageId, image, editedTags, editedRating, queryClient, requirePassword]);
 
   // Start delete flow - no password required yet
   const startDelete = useCallback(() => {
@@ -678,6 +706,23 @@ export default function ImagePage() {
                     disabled={isSaving}
                     helperText="Use underscores for multi-word tags (e.g., brown_hair)"
                   />
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2" color="text.secondary">
+                      Rating:
+                    </Typography>
+                    <Select
+                      size="small"
+                      value={editedRating ?? 0}
+                      onChange={(e) => setEditedRating(e.target.value === 0 ? null : Number(e.target.value))}
+                      disabled={isSaving}
+                      sx={{ minWidth: 130 }}
+                    >
+                      <MenuItem value={0}>Undefined</MenuItem>
+                      <MenuItem value={1}>Safe</MenuItem>
+                      <MenuItem value={2}>Questionable</MenuItem>
+                      <MenuItem value={3}>Explicit</MenuItem>
+                    </Select>
+                  </Stack>
                   {editError && (
                     <Alert severity="error" sx={{ py: 0 }}>
                       {editError}
@@ -688,7 +733,7 @@ export default function ImagePage() {
                       size="small"
                       variant="contained"
                       startIcon={<SaveIcon />}
-                      onClick={saveTags}
+                      onClick={saveEdits}
                       disabled={isSaving}
                     >
                       {isSaving ? 'Saving...' : 'Save'}
@@ -801,9 +846,10 @@ export default function ImagePage() {
                     <strong>Artist:</strong> {image.artist}
                   </Typography>
                 )}
-                {image.artist && (<Typography variant="body2">
-                  <strong>Rating:</strong> {formatRating(image.rating)}
-                </Typography>
+                {image.rating && !isEditing && (
+                  <Typography variant="body2">
+                    <strong>Rating:</strong> {formatRating(image.rating)}
+                  </Typography>
                 )}
                 {image.source && (
                   <Typography variant="body2">

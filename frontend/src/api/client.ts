@@ -170,6 +170,36 @@ export async function updateImageTags(id: number, tags: string[]): Promise<{ suc
   return response.json();
 }
 
+// Update image rating (may require edit password depending on server config)
+export async function updateImageRating(id: number, rating: number | null): Promise<{ success: boolean; rating: number | null }> {
+  const password = getEditPassword();
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (password) {
+    headers['X-Edit-Password'] = password;
+  }
+
+  const response = await fetch(`${API_BASE}/image/${id}/rating`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ rating }),
+  });
+
+  if (response.status === 401) {
+    clearEditPassword();
+    throw new Error('Invalid password');
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 // Delete image (may require edit password depending on server config)
 export async function deleteImageById(id: number, deleteFile: boolean = true): Promise<{ success: boolean; fileDeleted: boolean }> {
   const password = getEditPassword();
