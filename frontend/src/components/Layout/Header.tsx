@@ -17,6 +17,7 @@ import {
 } from '@mui/icons-material';
 import { useThemeMode } from '../../theme/ThemeContext';
 import SearchBar from '../Search/SearchBar';
+import { usePlugins, PluginButton } from '../../plugins';
 
 export default function Header() {
   const theme = useTheme();
@@ -26,6 +27,7 @@ export default function Header() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [searchValue, setSearchValue] = useState(searchParams.get('q') || '');
+  const { getButtonsForLocation } = usePlugins();
 
   // Hide search bar on homepage since it has its own
   const isHomePage = location.pathname === '/' || location.pathname === '/search';
@@ -86,6 +88,11 @@ export default function Header() {
         )}
 
         <Box sx={{ flexGrow: 1 }} />
+
+        {/* Plugin buttons for header location */}
+        {getButtonsForLocation('header').map((btn) => (
+          <PluginButton key={`${btn.pluginId}-${btn.id}`} button={btn} />
+        ))}
 
         <IconButton
           color="inherit"

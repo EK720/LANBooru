@@ -542,8 +542,8 @@ export default function ImagePage() {
           )}
 
           <Stack direction="row" spacing={1}>
-            {/* Plugin buttons */}
-            {image && getButtonsForLocation('image-actions').map((btn) => (
+            {/* Plugin buttons for top bar */}
+            {image && getButtonsForLocation('image-topbar').map((btn) => (
               <PluginButton
                 key={`${btn.pluginId}-${btn.id}`}
                 button={btn}
@@ -841,6 +841,15 @@ export default function ImagePage() {
                 Actions
               </Typography>
               <Stack spacing={1} sx={{ mt: 1 }}>
+                {/* Plugin buttons for sidebar */}
+                {getButtonsForLocation('image-sidebar').map((btn) => (
+                  <PluginButton
+                    key={`${btn.pluginId}-${btn.id}`}
+                    button={btn}
+                    image={image}
+                    variant="outlined"
+                  />
+                ))}
                 <Button
                   variant="outlined"
                   color="error"

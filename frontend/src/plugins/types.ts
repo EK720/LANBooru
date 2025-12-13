@@ -15,7 +15,7 @@ export interface PluginButton {
   label: string;
   icon?: string;
   tooltip?: string;
-  location: 'image-actions' | 'gallery-toolbar' | 'header' | 'settings';
+  location: 'image-topbar' | 'image-sidebar' | 'gallery-toolbar' | 'header' | 'settings';
   endpoint: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   confirmMessage?: string;

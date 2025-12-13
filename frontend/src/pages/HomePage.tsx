@@ -8,6 +8,7 @@ import { useSearch } from '../hooks/useSearch';
 import { useScrollRestore } from '../hooks/useScrollRestore';
 import { useGalleryNavigation } from '../hooks/useGalleryNavigation';
 import { getStats } from '../api/client';
+import { usePlugins, PluginButton } from '../plugins';
 
 export default function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,6 +26,8 @@ export default function HomePage() {
     queryKey: ['stats'],
     queryFn: getStats,
   });
+
+  const { getButtonsForLocation } = usePlugins();
 
   const {
     data,
@@ -195,9 +198,10 @@ export default function HomePage() {
 
       {/* Results section */}
       <Box sx={{ p: 2 }}>
-        {/* Query info */}
-        {query ? (
-          <Box sx={{ mb: 2 }}>
+        {/* Results info row with plugin buttons */}
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+          {/* Query info */}
+          {query ? (
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <Typography variant="body2" color="text.secondary">
                 Searching:
@@ -249,14 +253,23 @@ export default function HomePage() {
                 ({totalCount.toLocaleString()} results)
               </Typography>
             </Stack>
-          </Box>
-        ) : !isLoading && (
-          <Box sx={{ mb: 2 }}>
+          ) : !isLoading ? (
             <Typography variant="body2" color="text.secondary">
               Showing all images ({totalCount.toLocaleString()} total)
             </Typography>
-          </Box>
-        )}
+          ) : (
+            <Box /> /* Empty spacer while loading */
+          )}
+
+          {/* Gallery toolbar - plugin buttons (right-aligned) */}
+          {getButtonsForLocation('gallery-toolbar').length > 0 && (
+            <Stack direction="row" spacing={1}>
+              {getButtonsForLocation('gallery-toolbar').map((btn) => (
+                <PluginButton key={`${btn.pluginId}-${btn.id}`} button={btn} variant="outlined" />
+              ))}
+            </Stack>
+          )}
+        </Stack>
 
         <MasonryGallery
           images={images}

@@ -108,7 +108,7 @@ ai-tagger.lbplugin (tar.gz)
         "id": "auto-tag",
         "label": "Auto-Tag",
         "icon": "AutoAwesome",
-        "location": "image-actions",
+        "location": "image-topbar",
         "endpoint": "tag"
       }
     ]
@@ -167,7 +167,7 @@ my-service.lbplugin (tar.gz)
       {
         "id": "tag",
         "label": "Tag with My Service",
-        "location": "image-actions",
+        "location": "image-topbar",
         "endpoint": "tag"
       }
     ]
@@ -296,7 +296,7 @@ Buttons appear in the LANBooru UI and trigger plugin endpoints.
   "label": "Auto-Tag",
   "icon": "AutoAwesome",
   "tooltip": "Generate tags using AI",
-  "location": "image-actions",
+  "location": "image-topbar",
   "endpoint": "tag",
   "method": "POST",
   "confirmMessage": "Run AI tagging on this image?"
@@ -315,10 +315,11 @@ Buttons appear in the LANBooru UI and trigger plugin endpoints.
 | `confirmMessage` | No | Show confirmation dialog first |
 
 **Button locations:**
-- `image-actions` - Top bar on single image view
+- `image-topbar` - Top bar on single image view (icon only)
+- `image-sidebar` - Actions section in image sidebar (icon + label)
 - `gallery-toolbar` - Gallery/search results toolbar
 - `header` - Main header bar
-- `settings` - Plugin settings page
+- `settings` - Admin settings page
 
 ---
 
