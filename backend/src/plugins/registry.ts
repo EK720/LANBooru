@@ -25,6 +25,9 @@ import {
   stopPluginContainer,
   getContainerStatus,
   getBackendVolumeMounts,
+  startLogStreaming,
+  stopLogStreaming,
+  stopAllLogStreams,
 } from './container';
 import { query, queryOne, execute } from '../database/connection';
 import { addTagsToImage, removeTagsFromImage } from '../services/scanner';
@@ -127,6 +130,9 @@ export class PluginRegistry {
       plugin.error = 'Failed to start Docker container';
       return;
     }
+
+    // Start streaming logs to main console
+    startLogStreaming(pluginId);
 
     // Container started, health check will update status
     plugin.status = 'loading';
@@ -443,6 +449,7 @@ export class PluginRegistry {
       if (enabled) {
         await this.startContainerPlugin(plugin);
       } else {
+        stopLogStreaming(pluginId);
         await stopPluginContainer(pluginId);
         plugin.status = 'disabled';
       }
@@ -517,6 +524,9 @@ export class PluginRegistry {
    * Shutdown all container plugins
    */
   async shutdown(): Promise<void> {
+    // Stop all log streams first
+    stopAllLogStreams();
+
     const containerPlugins = [...this.plugins.values()].filter(
       p => p.manifest.type === 'container' && p.enabled
     );

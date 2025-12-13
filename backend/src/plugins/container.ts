@@ -10,12 +10,15 @@
  * - Windows (Docker Desktop native): //./pipe/docker_engine
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync, spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { LoadedPlugin } from './types';
 
 const CONTAINER_PREFIX = 'plugin-';
+
+// Track active log streaming processes so we can stop them on shutdown
+const activeLogStreams: Map<string, ChildProcess> = new Map();
 
 // Docker socket paths to try
 const DOCKER_SOCKET_PATHS = [
@@ -259,6 +262,80 @@ export function getContainerLogs(pluginId: string, lines: number = 100): string 
   } catch (err: any) {
     return err.message || 'Failed to get logs';
   }
+}
+
+/**
+ * Start streaming logs from a plugin container to the main console.
+ * Prefixes each line with the plugin ID for easy identification.
+ */
+export function startLogStreaming(pluginId: string): void {
+  const containerName = getContainerName(pluginId);
+
+  // Stop any existing stream for this plugin
+  stopLogStreaming(pluginId);
+
+  // Wait a moment for container to fully start before streaming
+  setTimeout(() => {
+    try {
+      const logProcess = spawn('docker', ['logs', '-f', '--tail', '0', containerName], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      const prefix = `[${pluginId}]`;
+
+      // Process stdout
+      logProcess.stdout?.on('data', (data: Buffer) => {
+        const lines = data.toString().split('\n').filter(line => line.trim());
+        for (const line of lines) {
+          console.log(`${prefix} ${line}`);
+        }
+      });
+
+      // Process stderr
+      logProcess.stderr?.on('data', (data: Buffer) => {
+        const lines = data.toString().split('\n').filter(line => line.trim());
+        for (const line of lines) {
+          console.error(`${prefix} ${line}`);
+        }
+      });
+
+      logProcess.on('error', (err) => {
+        console.error(`${prefix} Log stream error:`, err.message);
+      });
+
+      logProcess.on('close', (code) => {
+        activeLogStreams.delete(pluginId);
+        if (code !== 0 && code !== null) {
+          console.warn(`${prefix} Log stream ended (exit code: ${code})`);
+        }
+      });
+
+      activeLogStreams.set(pluginId, logProcess);
+    } catch (err) {
+      console.error(`Failed to start log streaming for ${pluginId}:`, err);
+    }
+  }, 1000); // Wait 1 second for container to be ready
+}
+
+/**
+ * Stop streaming logs from a plugin container
+ */
+export function stopLogStreaming(pluginId: string): void {
+  const process = activeLogStreams.get(pluginId);
+  if (process) {
+    process.kill();
+    activeLogStreams.delete(pluginId);
+  }
+}
+
+/**
+ * Stop all active log streams (call on shutdown)
+ */
+export function stopAllLogStreams(): void {
+  for (const [pluginId, process] of activeLogStreams) {
+    process.kill();
+  }
+  activeLogStreams.clear();
 }
 
 /**
