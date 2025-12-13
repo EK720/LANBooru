@@ -53,7 +53,7 @@ const DEFAULT_SORT_FIELD = 'date';
 const DEFAULT_SORT_DIRECTION: 'asc' | 'desc' = 'desc';
 
 const VALID_SORT_FIELDS = ['random', 'id', 'date', 'rating', 'height', 'width', 'size', 'updated'];
-const FILTER_METATAGS = ['rating', 'artist', 'date', 'id'];
+const FILTER_METATAGS = ['rating', 'artist', 'date', 'id', 'file'];
 
 const SORT_FIELD_MAP: Record<string, string> = {
   'random': 'RAND()',
@@ -66,10 +66,11 @@ const SORT_FIELD_MAP: Record<string, string> = {
   'updated': 'images.updated_at'
 };
 
-const RATING_MAP: Record<string, number> = {
+export const RATING_MAP: Record<string, number> = {
   'safe': 1, 's': 1,
   'questionable': 2, 'q': 2,
-  'explicit': 3, 'e': 3
+  'explicit': 3, 'e': 3,
+  'none': 0, 'undefined': 0, 'unrated': 0, 'u': 0
 };
 
  /**
@@ -411,6 +412,14 @@ function buildRatingSQL(value: string): { sql: string; params: any[] } {
     return { sql: '1=0', params: [] }; // Invalid rating matches nothing
   }
 
+  // 0 means unrated - match NULL or 0
+  if (numericRating === 0) {
+    return {
+      sql: '(images.rating IS NULL OR images.rating = 0)',
+      params: []
+    };
+  }
+
   return {
     sql: 'images.rating = ?',
     params: [numericRating]
@@ -436,6 +445,29 @@ function buildArtistSQL(value: string): { sql: string; params: any[] } {
 
   return {
     sql: 'images.artist = ?',
+    params: [value]
+  };
+}
+
+/**
+ * Build SQL for file metatag (searches by filename)
+ */
+function buildFileSQL(value: string): { sql: string; params: any[] } {
+  if (value.includes('*')) {
+    // Wildcard support
+    const likePattern = value
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_')
+      .replace(/\*/g, '%');
+
+    return {
+      sql: "images.filename LIKE ? ESCAPE '\\\\'",
+      params: [likePattern]
+    };
+  }
+
+  return {
+    sql: 'images.filename = ?',
     params: [value]
   };
 }
@@ -551,6 +583,8 @@ function buildSQLFromAST(node: ASTNode): { sql: string; params: any[] } {
           return buildRatingSQL(value);
         case 'artist':
           return buildArtistSQL(value);
+        case 'file':
+          return buildFileSQL(value);
         case 'date':
           return buildDateSQL(value, operator);
         case 'id':

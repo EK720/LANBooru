@@ -126,6 +126,11 @@ export default function HelpPage() {
                 <TableCell>e</TableCell>
                 <TableCell><CodeExample>rating:explicit</CodeExample> or <CodeExample>rating:e</CodeExample></TableCell>
               </TableRow>
+              <TableRow>
+                <TableCell>unrated</TableCell>
+                <TableCell>u</TableCell>
+                <TableCell><CodeExample>rating:unrated</CodeExample> or <CodeExample>rating:u</CodeExample></TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </TableContainer>
@@ -144,6 +149,19 @@ export default function HelpPage() {
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Examples: <CodeExample>artist:someone</CodeExample> (exact match), <CodeExample>artist:some*</CodeExample> (wildcard match)
+        </Typography>
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* File */}
+        <Typography variant="h6" gutterBottom>
+          file:
+        </Typography>
+        <Typography variant="body2" paragraph>
+          Filter by filename. Supports wildcards (*) and NOT/OR operators.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Examples: <CodeExample>file:image.jpg</CodeExample> (exact match), <CodeExample>file:*.png</CodeExample> (all PNGs), <CodeExample>file:photo*</CodeExample> (filename starts with "photo")
         </Typography>
 
         <Divider sx={{ my: 2 }} />
