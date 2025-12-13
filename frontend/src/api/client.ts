@@ -140,8 +140,19 @@ export function clearEditPassword() {
   sessionStorage.removeItem('edit-password');
 }
 
-// Update image tags (may require edit password depending on server config)
-export async function updateImageTags(id: number, tags: string[]): Promise<{ success: boolean; tags: string[] }> {
+// Update image metadata (tags and/or rating) - uses unified endpoint
+export interface UpdateImageParams {
+  tags?: string[];
+  rating?: number | null;
+}
+
+export interface UpdateImageResult {
+  success: boolean;
+  tags?: string[];
+  rating?: number | null;
+}
+
+export async function updateImage(id: number, updates: UpdateImageParams): Promise<UpdateImageResult> {
   const password = getEditPassword();
 
   const headers: Record<string, string> = {
@@ -151,10 +162,10 @@ export async function updateImageTags(id: number, tags: string[]): Promise<{ suc
     headers['X-Edit-Password'] = password;
   }
 
-  const response = await fetch(`${API_BASE}/image/${id}/tags`, {
+  const response = await fetch(`${API_BASE}/image/${id}`, {
     method: 'PATCH',
     headers,
-    body: JSON.stringify({ tags }),
+    body: JSON.stringify(updates),
   });
 
   if (response.status === 401) {
@@ -170,34 +181,15 @@ export async function updateImageTags(id: number, tags: string[]): Promise<{ suc
   return response.json();
 }
 
-// Update image rating (may require edit password depending on server config)
+// Convenience wrappers for updating just tags or just rating
+export async function updateImageTags(id: number, tags: string[]): Promise<{ success: boolean; tags: string[] }> {
+  const result = await updateImage(id, { tags });
+  return { success: result.success, tags: result.tags || [] };
+}
+
 export async function updateImageRating(id: number, rating: number | null): Promise<{ success: boolean; rating: number | null }> {
-  const password = getEditPassword();
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (password) {
-    headers['X-Edit-Password'] = password;
-  }
-
-  const response = await fetch(`${API_BASE}/image/${id}/rating`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify({ rating }),
-  });
-
-  if (response.status === 401) {
-    clearEditPassword();
-    throw new Error('Invalid password');
-  }
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
+  const result = await updateImage(id, { rating });
+  return { success: result.success, rating: result.rating ?? null };
 }
 
 // Delete image (may require edit password depending on server config)

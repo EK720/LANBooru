@@ -44,8 +44,7 @@ import { useGalleryNavigation } from '../hooks/useGalleryNavigation';
 import {
   getImageFileUrl,
   searchImages,
-  updateImageTags,
-  updateImageRating,
+  updateImage,
   deleteImageById,
   getEditPassword,
   setEditPassword,
@@ -336,15 +335,12 @@ export default function ImagePage() {
     setEditError(null);
 
     try {
-      // Only update tags if they changed
-      if (tagsChanged) {
-        await updateImageTags(imageId, newTags);
-      }
+      // Build update payload with only changed fields
+      const updates: { tags?: string[]; rating?: number | null } = {};
+      if (tagsChanged) updates.tags = newTags;
+      if (ratingChanged) updates.rating = editedRating;
 
-      // Only update rating if it changed
-      if (ratingChanged) {
-        await updateImageRating(imageId, editedRating);
-      }
+      await updateImage(imageId, updates);
 
       // Invalidate cache to refetch
       queryClient.invalidateQueries({ queryKey: ['image', imageId] });

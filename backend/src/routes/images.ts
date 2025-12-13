@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { query, queryOne, execute } from '../database/connection';
 import { getThumbnailPath, resizeThumbnail, calculateFileHash, deleteThumbnail, generateThumbnail } from '../services/thumbnail';
 import { deleteImage, addTagsToImage, removeTagsFromImage } from '../services/scanner';
-import { writeTagsToFile } from '../services/exif';
+import { writeFileMetadata } from '../services/exif';
 import { requireEditPassword } from '../middleware/security';
 import { ImageWithTags } from '../types';
 import { pluginRegistry } from '../index';
@@ -162,18 +162,29 @@ router.get('/:id/thumbnail', async (req, res) => {
 });
 
 /**
- * PATCH /api/image/:id/tags
- * Update tags for an image (requires edit password)
- * Body: { tags: string[] }
- * Efficiently updates only changed tags in DB, then writes to file
+ * PATCH /api/image/:id
+ * Update image metadata (tags and/or rating) - requires edit password
+ * Body: { tags?: string[], rating?: number | null }
+ *   - tags: Array of tag strings (rating:xxx metatags are extracted and applied)
+ *   - rating: 1=Safe, 2=Questionable, 3=Explicit, null=Undefined
+ *   - Rating in the 'rating' field overrides any rating:xxx metatag
  */
-router.patch('/:id/tags', requireEditPassword, async (req, res) => {
+router.patch('/:id', requireEditPassword, async (req, res) => {
   try {
     const { id } = req.params;
-    const { tags } = req.body;
+    const { tags, rating } = req.body;
 
-    if (!Array.isArray(tags)) {
+    // Validate inputs
+    if (tags !== undefined && !Array.isArray(tags)) {
       return res.status(400).json({ success: false, error: 'Tags must be an array' });
+    }
+    if (rating !== undefined && rating !== null && (typeof rating !== 'number' || ![1, 2, 3].includes(rating))) {
+      return res.status(400).json({ success: false, error: 'Rating must be 1, 2, 3, or null' });
+    }
+
+    // At least one field must be provided
+    if (tags === undefined && rating === undefined) {
+      return res.status(400).json({ success: false, error: 'Must provide tags and/or rating' });
     }
 
     const imageId = parseInt(id);
@@ -183,124 +194,118 @@ router.patch('/:id/tags', requireEditPassword, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Image not found' });
     }
 
-    // Normalize tags: trim, lowercase, remove empty
-    let normalizedTags = tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0);
+    let finalTags: string[] | undefined;
+    let finalRating: number | null | undefined;
 
-    // Extract rating:xxx tags and update rating field
-    let newRating: number | undefined;
-    normalizedTags = normalizedTags.filter(tag => {
-      if (tag.startsWith('rating:')) {
-        const ratingValue = tag.slice(7); // 'rating:'.length = 7
-        const mappedRating = RATING_MAP[ratingValue];
-        if (mappedRating !== undefined) {
-          newRating = mappedRating;
+    // Process tags if provided
+    if (tags !== undefined) {
+      // Normalize tags: trim, lowercase, remove empty
+      let normalizedTags = tags.map(t => String(t).trim().toLowerCase()).filter(t => t.length > 0);
+
+      // Extract rating:xxx metatags
+      let ratingFromTag: number | null | undefined;
+      normalizedTags = normalizedTags.filter(tag => {
+        if (tag.startsWith('rating:')) {
+          const ratingValue = tag.slice(7);
+          const mappedRating = RATING_MAP[ratingValue];
+          if (mappedRating !== undefined) {
+            ratingFromTag = [1, 2, 3].includes(mappedRating) ? mappedRating : null;
+          }
+          return false; // Remove rating tags from the list
         }
-        return false; // Remove rating tags from the list
+        return true;
+      });
+
+      // Apply rating from metatag (explicit rating param will override below)
+      if (ratingFromTag !== undefined) {
+        finalRating = ratingFromTag;
       }
-      return true;
-    });
 
-    // Update rating if a rating tag was found
-    if (newRating !== undefined) {
-      await execute('UPDATE images SET rating = ?, updated_at = NOW() WHERE id = ?', [newRating, imageId]);
-    }
+      // Allow plugins to transform tags before saving
+      normalizedTags = await pluginRegistry.runTransformHook('onBeforeTagUpdate', normalizedTags, imageId);
 
-    // Allow plugins to transform tags before saving
-    normalizedTags = await pluginRegistry.runTransformHook('onBeforeTagUpdate', normalizedTags, imageId);
+      const newTags = new Set(normalizedTags);
 
-    const newTags = new Set(normalizedTags);
-
-    // Get existing tags
-    const existingTagRows = await query<{ name: string }>(
-      `SELECT t.name FROM tags t
-       JOIN image_tags it ON t.id = it.tag_id
-       WHERE it.image_id = ?`,
-      [imageId]
-    );
-    const existingTags = new Set(existingTagRows.map(t => t.name));
-
-    // Calculate diff and apply changes
-    const tagsToAdd = [...newTags].filter(t => !existingTags.has(t));
-    const tagsToRemove = [...existingTags].filter(t => !newTags.has(t));
-
-    if (tagsToRemove.length > 0) {
-      await removeTagsFromImage(imageId, tagsToRemove);
-    }
-    if (tagsToAdd.length > 0) {
-      await addTagsToImage(imageId, tagsToAdd);
-    }
-
-    // Write tags to file (filters out internal tags like duplicate_image)
-    const finalTags = [...newTags];
-    try {
-      await writeTagsToFile(image.file_path, finalTags);
-
-      // Rehash the file and update DB so scanner doesn't see it as changed
-      const [newHash, stats] = await Promise.all([
-        calculateFileHash(image.file_path),
-        fs.stat(image.file_path)
-      ]);
-      await execute(
-        'UPDATE images SET file_hash = ?, file_size = ?, updated_at = NOW() WHERE id = ?',
-        [newHash, stats.size, imageId]
+      // Get existing tags and calculate diff
+      const existingTagRows = await query<{ name: string }>(
+        `SELECT t.name FROM tags t
+         JOIN image_tags it ON t.id = it.tag_id
+         WHERE it.image_id = ?`,
+        [imageId]
       );
-	  
-	  // Rename old thumbnail to new path
-	  const oldThumbLoc = getThumbnailPath(image.file_hash);
-	  try {
-		await fs.rename(oldThumbLoc, oldThumbLoc.slice(0, oldThumbLoc.lastIndexOf('/')) + `/${newHash}.jpg` );
-	  } catch (thumbErr) {
-		// If the rename fails for some reason, just delete the old thumb and generate a new one
-		await deleteThumbnail(image.file_hash);
-	    generateThumbnail(image.file_path, newHash);
-	  }
-	  
+      const existingTags = new Set(existingTagRows.map(t => t.name));
+
+      const tagsToAdd = [...newTags].filter(t => !existingTags.has(t));
+      const tagsToRemove = [...existingTags].filter(t => !newTags.has(t));
+
+      if (tagsToRemove.length > 0) {
+        await removeTagsFromImage(imageId, tagsToRemove);
+      }
+      if (tagsToAdd.length > 0) {
+        await addTagsToImage(imageId, tagsToAdd);
+      }
+
+      finalTags = [...newTags];
+    }
+
+    // Rating field overrides any rating:xxx metatag
+    if (rating !== undefined) {
+      finalRating = rating;
+    }
+
+    // Update rating in DB if changed
+    if (finalRating !== undefined) {
+      await execute('UPDATE images SET rating = ?, updated_at = NOW() WHERE id = ?', [finalRating, imageId]);
+    }
+
+    // Write metadata to file
+    try {
+      const metadataUpdate: { tags?: string[]; rating?: number | null } = {};
+      if (finalTags !== undefined) metadataUpdate.tags = finalTags;
+      if (finalRating !== undefined) metadataUpdate.rating = finalRating;
+
+      if (Object.keys(metadataUpdate).length > 0) {
+        await writeFileMetadata(image.file_path, metadataUpdate);
+
+        // Rehash the file and update DB so scanner doesn't see it as changed
+        const [newHash, stats] = await Promise.all([
+          calculateFileHash(image.file_path),
+          fs.stat(image.file_path)
+        ]);
+        await execute(
+          'UPDATE images SET file_hash = ?, file_size = ?, updated_at = NOW() WHERE id = ?',
+          [newHash, stats.size, imageId]
+        );
+
+        // Rename thumbnail if hash changed
+        if (newHash !== image.file_hash) {
+          const oldThumbLoc = getThumbnailPath(image.file_hash);
+          try {
+            await fs.rename(oldThumbLoc, oldThumbLoc.slice(0, oldThumbLoc.lastIndexOf('/')) + `/${newHash}.jpg`);
+          } catch {
+            await deleteThumbnail(image.file_hash);
+            generateThumbnail(image.file_path, newHash);
+          }
+        }
+      }
     } catch (fileError) {
-      console.error('Failed to write tags to file:', fileError);
+      console.error('Failed to write metadata to file:', fileError);
       // Don't fail the request, DB is already updated
     }
 
     // Fire plugin hook after tags are saved
-    pluginRegistry.runHook('onAfterTagUpdate', imageId, finalTags);
-
-    res.json({ success: true, tags: finalTags });
-  } catch (error) {
-    console.error('Failed to update tags:', error);
-    res.status(500).json({ success: false, error: 'Failed to update tags' });
-  }
-});
-
-/**
- * PATCH /api/image/:id/rating
- * Update rating for an image (requires edit password)
- * Body: { rating: number | null } (1=Safe, 2=Questionable, 3=Explicit, null=Undefined)
- */
-router.patch('/:id/rating', requireEditPassword, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rating } = req.body;
-
-    // Validate rating value
-    if (rating !== null && (typeof rating !== 'number' || ![1, 2, 3].includes(rating))) {
-      return res.status(400).json({ success: false, error: 'Rating must be 1, 2, 3, or null' });
+    if (finalTags !== undefined) {
+      pluginRegistry.runHook('onAfterTagUpdate', imageId, finalTags);
     }
 
-    const imageId = parseInt(id);
-    const image = await queryOne<{ id: number }>('SELECT id FROM images WHERE id = ?', [imageId]);
-
-    if (!image) {
-      return res.status(404).json({ success: false, error: 'Image not found' });
-    }
-
-    await execute(
-      'UPDATE images SET rating = ?, updated_at = NOW() WHERE id = ?',
-      [rating, imageId]
-    );
-
-    res.json({ success: true, rating });
+    res.json({
+      success: true,
+      ...(finalTags !== undefined && { tags: finalTags }),
+      ...(finalRating !== undefined && { rating: finalRating }),
+    });
   } catch (error) {
-    console.error('Failed to update rating:', error);
-    res.status(500).json({ success: false, error: 'Failed to update rating' });
+    console.error('Failed to update image:', error);
+    res.status(500).json({ success: false, error: 'Failed to update image' });
   }
 });
 

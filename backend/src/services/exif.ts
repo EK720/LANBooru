@@ -123,44 +123,73 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
 // Internal/meta tags that should not be written to files
 const INTERNAL_TAGS = ['duplicate_image'];
 
+interface FileMetadataUpdate {
+  tags?: string[];
+  rating?: number | null;
+}
+
 /**
- * Write tags to image/video file metadata
- * Filters out internal tags like 'duplicate_image'
+ * Write metadata to image/video file
+ * Handles tags and rating in a single exiftool call when possible
  *
- * JPEG: Writes to XPKeywords field (semicolon-separated)
- * Video: Writes to Genre field (semicolon-separated)
- * PNG/WebP: Writes to XMP Subject field
+ * Tags:
+ *   JPEG: XPKeywords field (semicolon-separated)
+ *   Video: Genre field (semicolon-separated)
+ *   PNG/GIF/WebP: XMP Subject field
+ *
+ * Rating:
+ *   XMP Rating field
  */
-export async function writeTagsToFile(filePath: string, tags: string[]): Promise<void> {
+export async function writeFileMetadata(filePath: string, updates: FileMetadataUpdate): Promise<void> {
   try {
     const ext = path.extname(filePath).toLowerCase();
+    const writeData: Record<string, any> = {};
+    const logParts: string[] = [];
 
-    // Filter out internal tags
-    const writableTags = tags.filter(t => !INTERNAL_TAGS.includes(t));
-    const tagString = writableTags.join(';');
+    // Prepare tags if provided
+    if (updates.tags !== undefined) {
+      const writableTags = updates.tags.filter(t => !INTERNAL_TAGS.includes(t));
+      const tagString = writableTags.join(';');
 
-    if (ext === '.jpg' || ext === '.jpeg') {
-      // JPEG: Write to XPKeywords
-      await exiftool.write(filePath, {
-        XPKeywords: tagString
-      }, ['-overwrite_original']);
-    } else if (ext === '.mp4' || ext === '.webm' || ext === '.mkv') {
-      // Video: Write to Genre field
-      await exiftool.write(filePath, {
-        Genre: tagString
-      } as any, ['-overwrite_original']);
-    } else if (ext === '.png' || ext === '.gif' || ext === '.webp') {
-      // PNG/GIF/WebP: Write to Subject field
-      await exiftool.write(filePath, {
-        'Subject': writableTags
-      }, ['-overwrite_original']);
+      if (ext === '.jpg' || ext === '.jpeg') {
+        writeData.XPKeywords = tagString;
+      } else if (ext === '.mp4' || ext === '.webm' || ext === '.mkv') {
+        writeData.Genre = tagString;
+      } else if (ext === '.png' || ext === '.gif' || ext === '.webp') {
+        writeData.Subject = writableTags;
+      }
+      logParts.push(`${writableTags.length} tags`);
     }
 
-    console.log(`Wrote ${writableTags.length} tags to ${path.basename(filePath)}`);
+    // Prepare rating if provided
+    if (updates.rating !== undefined) {
+      writeData.Rating = updates.rating ?? '';  // Empty string removes the field
+      logParts.push(`rating ${updates.rating ?? 'none'}`);
+    }
+
+    // Write all metadata in one call
+    if (Object.keys(writeData).length > 0) {
+      await exiftool.write(filePath, writeData, ['-overwrite_original']);
+      console.log(`Wrote ${logParts.join(', ')} to ${path.basename(filePath)}`);
+    }
   } catch (error) {
-    console.error(`Failed to write tags to ${filePath}:`, error);
+    console.error(`Failed to write metadata to ${filePath}:`, error);
     throw error;
   }
+}
+
+/**
+ * Write tags to file (convenience wrapper)
+ */
+export async function writeTagsToFile(filePath: string, tags: string[]): Promise<void> {
+  return writeFileMetadata(filePath, { tags });
+}
+
+/**
+ * Write rating to file (convenience wrapper)
+ */
+export async function writeRatingToFile(filePath: string, rating: number | null): Promise<void> {
+  return writeFileMetadata(filePath, { rating });
 }
 
 /**
