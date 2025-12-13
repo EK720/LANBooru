@@ -61,7 +61,7 @@ export interface PluginButton {
   label: string;
   icon?: string; // Material icon name or URL
   tooltip?: string;
-  location: 'image-actions' | 'gallery-toolbar' | 'header' | 'settings';
+  location: 'image-topbar' | 'image-sidebar' | 'gallery-toolbar' | 'header' | 'settings';
   endpoint: string; // Relative to /api/plugins/{pluginId}/
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   confirmMessage?: string; // Optional confirmation dialog
