@@ -2,7 +2,15 @@ import { Router } from 'express';
 import { execute, query, queryOne } from '../database/connection';
 import { localhostOnly } from '../middleware/security';
 import { Folder } from '../types';
-import { scanFolder, deleteImage, cleanupDeletedFiles } from '../services/scanner';
+import {
+  scanFolder,
+  deleteImage,
+  cleanupDeletedFiles,
+  isFolderBeingDeleted,
+  markFolderDeleting,
+  unmarkFolderDeleting,
+  waitForFolderScanComplete,
+} from '../services/scanner';
 
 const router = Router();
 
@@ -49,6 +57,11 @@ router.post('/', async (req, res) => {
       }
     } catch (error) {
       return res.status(400).json({ error: 'Folder does not exist or is not accessible' });
+    }
+
+    // Check if folder is currently being deleted
+    if (isFolderBeingDeleted(path)) {
+      return res.status(400).json({ error: 'This folder is currently being deleted. Please wait and try again.' });
     }
 
     // Check if folder already exists in database
@@ -106,28 +119,39 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Folder not found' });
     }
 
-    // Delete folder from database
-    const result = await execute('DELETE FROM folders WHERE id = ?', [folderId]);
+    // Mark folder as being deleted to prevent new scans and block re-adding
+    markFolderDeleting(folder.path);
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Folder not found' });
+    try {
+      // Wait for any ongoing scan of this folder to complete
+      await waitForFolderScanComplete(folder.path);
+
+      // Delete folder from database
+      const result = await execute('DELETE FROM folders WHERE id = ?', [folderId]);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Folder not found' });
+      }
+
+      // Clean up images that were in this folder
+      // Get all image IDs where file_path starts with the folder path
+      const delImages = await query<{ id: number }>(
+        'SELECT id FROM images WHERE file_path LIKE ?',
+        [folder.path + '/%']
+      );
+
+      // Delete each image properly (handles thumbnails, tags, duplicate groups)
+      for (const delImage of delImages) {
+        await deleteImage(delImage.id);
+      }
+
+      console.log(`Deleted folder ${folder.path} and cleaned up ${delImages.length} images`);
+
+      res.status(204).send();
+    } finally {
+      // Always unmark the folder when done (success or failure)
+      unmarkFolderDeleting(folder.path);
     }
-
-    // Clean up images that were in this folder
-    // Get all image IDs where file_path starts with the folder path
-    const delImages = await query<{ id: number }>(
-      'SELECT id FROM images WHERE file_path LIKE ?',
-      [folder.path + '/%']
-    );
-
-    // Delete each image properly (handles thumbnails, tags, duplicate groups)
-    for (const delImage of delImages) {
-      await deleteImage(delImage.id);
-    }
-
-    console.log(`Deleted folder ${folder.path} and cleaned up ${delImages.length} images`);
-
-    res.status(204).send();
   } catch (error) {
     console.error('Failed to delete folder:', error);
     res.status(500).json({ error: 'Failed to delete folder' });

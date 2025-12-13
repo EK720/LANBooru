@@ -15,6 +15,40 @@ console.log(`Duplicate scan running? ${DUPLICATE_SCAN_ENABLED ? "true" : "false"
 let isScanningInProgress = false;
 const scanQueue: (() => void)[] = [];
 
+// Track folder operation state to prevent race conditions
+const deletingFolderPaths = new Set<string>();
+let currentScanningFolderPath: string | null = null;
+
+/**
+ * Check if a folder is currently being deleted
+ */
+export function isFolderBeingDeleted(folderPath: string): boolean {
+  return deletingFolderPaths.has(folderPath);
+}
+
+/**
+ * Mark a folder as being deleted (prevents scans from processing it)
+ */
+export function markFolderDeleting(folderPath: string): void {
+  deletingFolderPaths.add(folderPath);
+}
+
+/**
+ * Unmark a folder as being deleted
+ */
+export function unmarkFolderDeleting(folderPath: string): void {
+  deletingFolderPaths.delete(folderPath);
+}
+
+/**
+ * Wait for any ongoing scan of a specific folder to complete
+ */
+export async function waitForFolderScanComplete(folderPath: string): Promise<void> {
+  while (currentScanningFolderPath === folderPath && isScanningInProgress) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
 // Acquire scan lock, waiting if necessary
 async function acquireScanLock(wait: boolean = true): Promise<boolean> {
   if (!isScanningInProgress) {
@@ -51,12 +85,21 @@ function releaseScanLock(): void {
  * @param waitForLock - If true, waits for ongoing scans. If false, skips if scan in progress
  */
 export async function scanFolder(folder: Folder, waitForLock: boolean = true): Promise<number> {
+  // Check if folder is being deleted - don't start scan
+  if (isFolderBeingDeleted(folder.path)) {
+    console.log(`Skipping scan of ${folder.path} - folder is being deleted`);
+    return 0;
+  }
+
   // Acquire lock
   const acquired = await acquireScanLock(waitForLock);
   if (!acquired) {
     console.log(`Skipping scan of ${folder.path} - another scan in progress`);
     return 0;
   }
+
+  // Track which folder we're scanning
+  currentScanningFolderPath = folder.path;
 
   try {
     console.log(`Scanning folder: ${folder.path} (recursive: ${folder.do_recurse ? "true" : "false"})`);
@@ -65,6 +108,12 @@ export async function scanFolder(folder: Folder, waitForLock: boolean = true): P
     const files = await findImageFiles(folder.path, folder.do_recurse);
 
     for (const filePath of files) {
+      // Check if folder deletion was requested - abort scan early
+      if (isFolderBeingDeleted(folder.path)) {
+        console.log(`Aborting scan of ${folder.path} - folder deletion requested`);
+        break;
+      }
+
       try {
         const added = await processFile(filePath);
         if (added) addedCount++;
@@ -73,15 +122,18 @@ export async function scanFolder(folder: Folder, waitForLock: boolean = true): P
       }
     }
 
-    // Update last scanned timestamp
-    await execute(
-      'UPDATE folders SET last_scanned_at = NOW() WHERE id = ?',
-      [folder.id]
-    );
+    // Only update timestamp if we weren't interrupted by deletion
+    if (!isFolderBeingDeleted(folder.path)) {
+      await execute(
+        'UPDATE folders SET last_scanned_at = NOW() WHERE id = ?',
+        [folder.id]
+      );
+    }
 
     console.log(`Scan complete: ${addedCount} new images added from ${folder.path}`);
     return addedCount;
   } finally {
+    currentScanningFolderPath = null;
     releaseScanLock();
   }
 }
