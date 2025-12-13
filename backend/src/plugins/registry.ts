@@ -44,6 +44,8 @@ export class PluginRegistry {
    * Load all plugins from the plugins directory
    */
   async loadPlugins(): Promise<void> {
+    const startTime = Date.now();
+
     // Check Docker availability for container plugins
     this.dockerAvailable = isDockerAvailable();
     if (this.dockerAvailable) {
@@ -86,8 +88,10 @@ export class PluginRegistry {
         plugin.status = 'loading';
       }
     }
-
-    console.log(`Loaded ${this.plugins.size} plugin(s)`);
+	
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    const pluginCount = this.plugins.size;
+    console.log(`Loaded ${pluginCount} plugin${pluginCount === 1 ? '' : 's'} in ${duration}s`);
   }
 
   /**
