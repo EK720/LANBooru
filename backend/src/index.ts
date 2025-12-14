@@ -111,6 +111,14 @@ async function start() {
 
     // Check health of container/external plugins
     await pluginRegistry.checkHealth();
+	
+	// Start server
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log("\n################################################################");
+      console.log(`LANBooru Backend listening on port ${PORT}`);
+      console.log(`Health check: http://localhost:${PORT}/health`);
+	  console.log("################################################################\n\n");
+    });
 
     // Run initial scan
     console.log('Running initial scan...');
@@ -126,12 +134,6 @@ async function start() {
     } else {
       console.log('Periodic scanning disabled');
     }
-
-    // Start server
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`LANBooru Backend listening on port ${PORT}`);
-      console.log(`Health check: http://localhost:${PORT}/health`);
-    });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
