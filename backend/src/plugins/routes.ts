@@ -237,8 +237,9 @@ export function createPluginRoutes(registry: PluginRegistry, pluginsDir: string,
     const { pluginId } = req.params;
     const plugin = registry.get(pluginId);
 
-    // For builtin plugins, let Express continue to routes they registered via onRouteRegister
+    // For builtin plugins, inject fresh config and let Express continue to routes they registered via onRouteRegister
     if (plugin?.manifest.type === 'builtin') {
+      req.headers['x-plugin-config'] = JSON.stringify(plugin.config);
       return next();
     }
 
