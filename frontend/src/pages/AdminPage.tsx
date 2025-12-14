@@ -291,6 +291,9 @@ export default function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
     },
+    onError: (err: Error) => {
+      setError(`Failed to uninstall plugin: ${err.message}`);
+    },
   });
 
   const pluginUploadMutation = useMutation({

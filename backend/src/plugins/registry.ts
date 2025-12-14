@@ -39,6 +39,7 @@ export class PluginRegistry {
   private loader: PluginLoader;
   private dockerAvailable: boolean = false;
   private volumeMounts: string[] = [];
+  private installingPlugins: Set<string> = new Set(); // Track plugins currently being installed
 
   constructor(loader: PluginLoader) {
     this.loader = loader;
@@ -516,7 +517,13 @@ export class PluginRegistry {
       } else if (plugin.manifest.type === 'container') {
         plugin.status = 'loading';
         if (this.dockerAvailable) {
-          await this.startContainerPlugin(plugin);
+          // Track that this plugin is being installed (container build may take a while)
+          this.installingPlugins.add(plugin.manifest.id);
+          try {
+            await this.startContainerPlugin(plugin);
+          } finally {
+            this.installingPlugins.delete(plugin.manifest.id);
+          }
         } else {
           plugin.status = 'error';
           plugin.error = 'Docker is not available';
@@ -561,6 +568,11 @@ export class PluginRegistry {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) {
       return { success: false, error: `Plugin not found: ${pluginId}` };
+    }
+
+    // Prevent uninstall while plugin is being installed (container build in progress)
+    if (this.installingPlugins.has(pluginId)) {
+      return { success: false, error: `Plugin "${pluginId}" is currently being installed. Please wait for installation to complete.` };
     }
 
     console.log(`Uninstalling plugin: ${pluginId}`);
