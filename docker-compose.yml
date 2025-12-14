@@ -82,6 +82,7 @@ services:
       - "${FRONTEND_PORT}:80"
     environment:
       VITE_IMAGES_PER_PAGE: ${VITE_IMAGES_PER_PAGE}
+      MAX_PLUGIN_SIZE_MB: ${MAX_PLUGIN_SIZE_MB}
     networks:
       - booru-network
     depends_on:

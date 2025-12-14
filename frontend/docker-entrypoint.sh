@@ -1,5 +1,17 @@
 #!/bin/sh
 
+# Process nginx config template with environment variables
+# Default MAX_PLUGIN_SIZE_MB to 500 if not set
+export MAX_PLUGIN_SIZE_MB="${MAX_PLUGIN_SIZE_MB:-500}"
+
+NGINX_TEMPLATE="/etc/nginx/templates/default.conf.template"
+NGINX_CONF="/etc/nginx/conf.d/default.conf"
+
+if [ -f "$NGINX_TEMPLATE" ]; then
+  echo "Processing nginx config template (MAX_PLUGIN_SIZE_MB=${MAX_PLUGIN_SIZE_MB})"
+  envsubst '${MAX_PLUGIN_SIZE_MB}' < "$NGINX_TEMPLATE" > "$NGINX_CONF"
+fi
+
 # Generate runtime config from VITE_* environment variables
 # This allows env vars to be set at container runtime, not build time
 
