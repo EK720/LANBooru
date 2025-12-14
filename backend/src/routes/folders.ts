@@ -118,6 +118,11 @@ router.delete('/:id', async (req, res) => {
     if (!folder) {
       return res.status(404).json({ error: 'Folder not found' });
     }
+	
+	// If folder is already being deleted, don't double-dip
+	if (isFolderBeingDeleted(folder.path)) {
+		return res.status(400).json({ error: 'This folder cannot be deleted because it is already being deleted. Please wait for the deletion to finish.' });
+	}
 
     // Mark folder as being deleted to prevent new scans and block re-adding
     markFolderDeleting(folder.path);
@@ -126,15 +131,8 @@ router.delete('/:id', async (req, res) => {
       // Wait for any ongoing scan of this folder to complete
       await waitForFolderScanComplete(folder.path);
 
-      // Delete folder from database
-      const result = await execute('DELETE FROM folders WHERE id = ?', [folderId]);
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Folder not found' });
-      }
-
-      // Clean up images that were in this folder
-      // Get all image IDs where file_path starts with the folder path
+      // Clean up images before deleting folder record
+      // This way if cleanup fails, folder record still exists for retry
       const delImages = await query<{ id: number }>(
         'SELECT id FROM images WHERE file_path LIKE ?',
         [folder.path + '/%']
@@ -143,6 +141,13 @@ router.delete('/:id', async (req, res) => {
       // Delete each image properly (handles thumbnails, tags, duplicate groups)
       for (const delImage of delImages) {
         await deleteImage(delImage.id);
+      }
+
+      // Delete folder from database
+      const result = await execute('DELETE FROM folders WHERE id = ?', [folderId]);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Folder not found' });
       }
 
       console.log(`Deleted folder ${folder.path} and cleaned up ${delImages.length} images`);
