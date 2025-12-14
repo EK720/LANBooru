@@ -249,10 +249,32 @@ export async function stopPluginContainer(pluginId: string): Promise<boolean> {
 }
 
 /**
- * Remove a plugin's Docker image (and container if still present)
- * Handles the full cleanup: stop container → remove container → remove image
+ * Remove Docker volumes associated with a plugin
+ * Volume format in manifest: "volumeName:/container/path"
  */
-export async function removePluginImage(pluginId: string): Promise<boolean> {
+export function removePluginVolumes(volumes: string[]): void {
+  for (const vol of volumes) {
+    // Extract volume name (before the colon)
+    const volumeName = vol.split(':')[0];
+    if (!volumeName) continue;
+
+    try {
+      // Check if volume exists
+      execSync(`docker volume inspect ${volumeName} 2>/dev/null`, { stdio: 'pipe' });
+      // Remove the volume
+      execSync(`docker volume rm ${volumeName}`, { stdio: 'pipe' });
+      console.log(`    Removed Docker volume: ${volumeName}`);
+    } catch {
+      // Volume doesn't exist or couldn't be removed - continue
+    }
+  }
+}
+
+/**
+ * Remove a plugin's Docker image (and container if still present)
+ * Handles the full cleanup: stop container → remove container → remove image → remove volumes
+ */
+export async function removePluginImage(pluginId: string, volumes: string[] = []): Promise<boolean> {
   const imageName = getImageName(pluginId);
 
   // First, ensure container is stopped and removed (can't remove image with active container)
@@ -262,7 +284,10 @@ export async function removePluginImage(pluginId: string): Promise<boolean> {
   try {
     execSync(`docker image inspect ${imageName} 2>/dev/null`, { stdio: 'pipe' });
   } catch {
-    // Image doesn't exist - nothing to remove
+    // Image doesn't exist - still clean up volumes
+    if (volumes.length > 0) {
+      removePluginVolumes(volumes);
+    }
     return true;
   }
 
@@ -274,6 +299,13 @@ export async function removePluginImage(pluginId: string): Promise<boolean> {
     console.warn(`Failed to remove Docker image ${imageName}:`, err);
     return false;
   }
+
+  // Clean up plugin volumes
+  if (volumes.length > 0) {
+    removePluginVolumes(volumes);
+  }
+
+  return true;
 }
 
 /**

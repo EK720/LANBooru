@@ -583,7 +583,8 @@ export class PluginRegistry {
     // Remove Docker resources for container plugins
     if (plugin.manifest.type === 'container' && this.dockerAvailable) {
       console.log(`  Removing Docker resources for ${pluginId}...`);
-      await removePluginImage(pluginId);
+      const volumes = plugin.manifest.container?.volumes || [];
+      await removePluginImage(pluginId, volumes);
     }
 
     // Remove plugin files
