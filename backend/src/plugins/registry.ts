@@ -28,6 +28,7 @@ import {
   startLogStreaming,
   stopLogStreaming,
   stopAllLogStreams,
+  removePluginImage,
 } from './container';
 import { query, queryOne, execute } from '../database/connection';
 import { addTagsToImage, removeTagsFromImage } from '../services/scanner';
@@ -473,6 +474,130 @@ export class PluginRegistry {
     this.loader.saveConfig(pluginId, plugin.config, plugin.enabled);
 
     return true;
+  }
+
+  /**
+   * Install a new plugin from an uploaded .lbplugin file
+   * Returns the plugin info if successful
+   * @param archivePath Path to the .lbplugin file
+   * @param app Optional Express app for registering builtin plugin routes
+   */
+  async install(archivePath: string, app?: Application): Promise<{ success: boolean; plugin?: PluginInfo; error?: string }> {
+    try {
+      // Load the plugin using the loader
+      const plugin = await this.loader.loadSinglePlugin(archivePath);
+      if (!plugin) {
+        return { success: false, error: 'Failed to load plugin - check manifest' };
+      }
+
+      // Check for duplicate ID
+      if (this.plugins.has(plugin.manifest.id)) {
+        return { success: false, error: `Plugin with ID "${plugin.manifest.id}" already exists` };
+      }
+
+      // Register the plugin
+      this.plugins.set(plugin.manifest.id, plugin);
+
+      // Load hooks if plugin has them
+      if (plugin.manifest.hooks?.backend && plugin.enabled) {
+        await this.loadPluginHooks(plugin);
+
+        // For builtin plugins, register routes if we have the app
+        if (plugin.manifest.type === 'builtin' && app) {
+          await this.runHook('onRouteRegister', app);
+        }
+      }
+
+      // Handle plugin type-specific setup
+      if (!plugin.enabled) {
+        plugin.status = 'disabled';
+      } else if (plugin.manifest.type === 'builtin') {
+        plugin.status = plugin.status === 'error' ? 'error' : 'healthy';
+      } else if (plugin.manifest.type === 'container') {
+        plugin.status = 'loading';
+        if (this.dockerAvailable) {
+          await this.startContainerPlugin(plugin);
+        } else {
+          plugin.status = 'error';
+          plugin.error = 'Docker is not available';
+        }
+      } else {
+        plugin.status = 'loading';
+      }
+
+      console.log(`Plugin ${plugin.manifest.id} installed successfully`);
+
+      return {
+        success: true,
+        plugin: {
+          id: plugin.manifest.id,
+          name: plugin.manifest.name,
+          version: plugin.manifest.version,
+          description: plugin.manifest.description,
+          type: plugin.manifest.type,
+          enabled: plugin.enabled,
+          status: plugin.status,
+          hasScript: !!plugin.manifest.frontend?.script,
+          buttons: plugin.manifest.frontend?.buttons || [],
+          config: plugin.manifest.config || [],
+          currentConfig: plugin.config,
+        },
+      };
+    } catch (err) {
+      console.error('Failed to install plugin:', err);
+      return { success: false, error: String(err) };
+    }
+  }
+
+  /**
+   * Uninstall a plugin completely
+   * - Stops log streaming
+   * - Removes Docker image and container (for container plugins)
+   * - Deletes extracted files and .lbplugin archive
+   * - Removes config from plugin-config.json
+   * - Removes from registry
+   */
+  async uninstall(pluginId: string): Promise<{ success: boolean; error?: string }> {
+    const plugin = this.plugins.get(pluginId);
+    if (!plugin) {
+      return { success: false, error: `Plugin not found: ${pluginId}` };
+    }
+
+    console.log(`Uninstalling plugin: ${pluginId}`);
+
+    // Stop log streaming if active
+    stopLogStreaming(pluginId);
+
+    // Remove Docker resources for container plugins
+    if (plugin.manifest.type === 'container' && this.dockerAvailable) {
+      console.log(`  Removing Docker resources for ${pluginId}...`);
+      await removePluginImage(pluginId);
+    }
+
+    // Remove plugin files
+    console.log(`  Removing plugin files for ${pluginId}...`);
+    const fileResult = this.loader.removePluginFiles(pluginId);
+
+    // Remove config
+    this.loader.removePluginConfig(pluginId);
+
+    // Remove from registry
+    this.plugins.delete(pluginId);
+
+    // Remove any registered hooks for this plugin
+    for (const [hookName, handlers] of this.hooks) {
+      const filtered = handlers.filter(h => h.pluginId !== pluginId);
+      if (filtered.length !== handlers.length) {
+        this.hooks.set(hookName, filtered);
+      }
+    }
+
+    console.log(`Plugin ${pluginId} uninstalled successfully`);
+
+    return {
+      success: true,
+      ...(!fileResult.archiveDeleted && { error: 'Archive file could not be deleted' }),
+    };
   }
 
   /**

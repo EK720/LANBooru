@@ -6,12 +6,41 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction, Application } from 'express';
+import multer from 'multer';
 import type { PluginRegistry } from './registry';
 import type { PluginConfig } from './types';
+import { localhostOnly } from '../middleware/security';
 
-export function createPluginRoutes(registry: PluginRegistry): Router {
+// Max plugin upload size in MB (default 500MB for AI model support)
+const MAX_PLUGIN_SIZE_MB = parseInt(process.env.MAX_PLUGIN_SIZE_MB || '500', 10);
+
+export function createPluginRoutes(registry: PluginRegistry, pluginsDir: string, app: Application): Router {
   const router = Router();
+
+  // Configure multer for plugin uploads
+  const storage = multer.diskStorage({
+    destination: pluginsDir,
+    filename: (req, file, cb) => {
+      // Keep original filename but sanitize it
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      cb(null, safeName);
+    },
+  });
+
+  const upload = multer({
+    storage,
+    limits: {
+      fileSize: MAX_PLUGIN_SIZE_MB * 1024 * 1024,
+    },
+    fileFilter: (req, file, cb) => {
+      if (file.originalname.endsWith('.lbplugin')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only .lbplugin files are allowed'));
+      }
+    },
+  });
 
   /**
    * GET /api/plugins
@@ -22,6 +51,36 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
     await registry.checkHealth();
     const plugins = registry.getAll();
     res.json({ plugins });
+  });
+
+  /**
+   * POST /api/plugins/upload
+   * Upload and install a new plugin
+   * Localhost only - prevents remote installation
+   */
+  router.post('/upload', localhostOnly, upload.single('plugin'), async (req: Request, res: Response) => {
+    if (!req.file) {
+      res.status(400).json({ error: 'No plugin file uploaded' });
+      return;
+    }
+
+    const result = await registry.install(req.file.path, app);
+
+    if (!result.success) {
+      // Clean up the uploaded file on failure
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        // Ignore cleanup errors
+      }
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    res.json({
+      success: true,
+      plugin: result.plugin,
+    });
   });
 
   /**
@@ -55,8 +114,9 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
   /**
    * PATCH /api/plugins/:pluginId
    * Update plugin settings (enabled state and/or config)
+   * Localhost only - prevents remote configuration changes
    */
-  router.patch('/:pluginId', async (req: Request, res: Response) => {
+  router.patch('/:pluginId', localhostOnly, async (req: Request, res: Response) => {
     const { pluginId } = req.params;
     const { enabled, config } = req.body as {
       enabled?: boolean;
@@ -84,6 +144,28 @@ export function createPluginRoutes(registry: PluginRegistry): Router {
       enabled: updated.enabled,
       status: updated.status,
       currentConfig: updated.config,
+    });
+  });
+
+  /**
+   * DELETE /api/plugins/:pluginId
+   * Uninstall a plugin completely
+   * Localhost only - prevents remote uninstallation
+   */
+  router.delete('/:pluginId', localhostOnly, async (req: Request, res: Response) => {
+    const { pluginId } = req.params;
+
+    const result = await registry.uninstall(pluginId);
+
+    if (!result.success) {
+      res.status(404).json({ error: result.error });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: `Plugin ${pluginId} uninstalled`,
+      ...(result.error && { warning: result.error }),
     });
   });
 

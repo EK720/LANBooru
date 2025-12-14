@@ -249,6 +249,35 @@ export async function stopPluginContainer(pluginId: string): Promise<boolean> {
 }
 
 /**
+ * Remove a plugin's Docker image (and container if still present)
+ * Handles the full cleanup: stop container → remove container → remove image
+ */
+export async function removePluginImage(pluginId: string): Promise<boolean> {
+  const imageName = getImageName(pluginId);
+
+  // First, ensure container is stopped and removed (can't remove image with active container)
+  await stopPluginContainer(pluginId);
+
+  // Check if image exists
+  try {
+    execSync(`docker image inspect ${imageName} 2>/dev/null`, { stdio: 'pipe' });
+  } catch {
+    // Image doesn't exist - nothing to remove
+    return true;
+  }
+
+  // Image exists, try to remove it
+  try {
+    execSync(`docker rmi ${imageName}`, { stdio: 'pipe' });
+    console.log(`Removed Docker image: ${imageName}`);
+    return true;
+  } catch (err) {
+    console.warn(`Failed to remove Docker image ${imageName}:`, err);
+    return false;
+  }
+}
+
+/**
  * Get logs from a plugin container
  */
 export function getContainerLogs(pluginId: string, lines: number = 100): string {

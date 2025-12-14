@@ -82,3 +82,37 @@ export async function checkPluginHealth(pluginId: string): Promise<{ status: str
     method: 'POST',
   });
 }
+
+/**
+ * Upload and install a new plugin
+ */
+export async function uploadPlugin(file: File): Promise<{ success: boolean; plugin?: PluginInfo; error?: string }> {
+  const formData = new FormData();
+  formData.append('plugin', file);
+
+  const response = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    body: formData,
+    // Don't set Content-Type header - browser will set it with boundary for multipart
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+    throw new Error(error.error || `HTTP ${response.status}`);
+  }
+
+  const result = await response.json();
+  if (result.plugin) {
+    result.plugin.buttons = result.plugin.buttons.map((btn: any) => ({ ...btn, pluginId: result.plugin.id }));
+  }
+  return result;
+}
+
+/**
+ * Uninstall a plugin
+ */
+export async function uninstallPlugin(pluginId: string): Promise<{ success: boolean; message?: string; warning?: string }> {
+  return fetchJSON(`${API_BASE}/${pluginId}`, {
+    method: 'DELETE',
+  });
+}

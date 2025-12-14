@@ -73,7 +73,7 @@ app.use('/api/folders', foldersRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/image', imagesRouter);
 app.use('/api/stats', statsRouter);
-app.use('/api/plugins', createPluginRoutes(pluginRegistry));
+app.use('/api/plugins', createPluginRoutes(pluginRegistry, PLUGINS_DIR, app));
 app.use('/lite', liteRouter);
 
 // Error handling

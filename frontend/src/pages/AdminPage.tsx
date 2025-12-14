@@ -30,10 +30,11 @@ import {
   Refresh as ScanIcon,
   Add as AddIcon,
   ExpandMore as ExpandMoreIcon,
+  CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getFolders, addFolder, deleteFolder, updateFolder, scanFolder } from '../api/client';
-import { getPlugins, updatePlugin } from '../plugins/api';
+import { getPlugins, updatePlugin, uninstallPlugin, uploadPlugin } from '../plugins/api';
 import { usePlugins, PluginButton } from '../plugins';
 import type { Folder } from '../types/api';
 import type { PluginInfo, ConfigField, PluginConfig } from '../plugins/types';
@@ -191,6 +192,9 @@ export default function AdminPage() {
   // Track which plugins are being toggled (for optimistic UI)
   const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(new Set());
 
+  // Drag-and-drop state for plugin upload
+  const [isDragging, setIsDragging] = useState(false);
+
   // Folders query
   const { data: folders, isLoading: foldersLoading } = useQuery({
     queryKey: ['folders'],
@@ -281,6 +285,34 @@ export default function AdminPage() {
       });
     },
   });
+
+  const pluginUninstallMutation = useMutation({
+    mutationFn: uninstallPlugin,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+
+  const pluginUploadMutation = useMutation({
+    mutationFn: uploadPlugin,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+    onError: (err: Error) => {
+      setError(err.message);
+    },
+  });
+
+  const handlePluginUpload = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file.name.endsWith('.lbplugin')) {
+      setError('Only .lbplugin files are allowed');
+      return;
+    }
+    setError(null);
+    pluginUploadMutation.mutate(file);
+  };
 
   const handleAddFolder = () => {
     if (newPath.trim()) {
@@ -463,6 +495,70 @@ export default function AdminPage() {
       {/* Plugins Tab */}
       {activeTab === 1 && (
         <Box>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Plugin management is only available from localhost for security.
+          </Alert>
+
+          {/* Upload zone */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              mb: 3,
+              border: 2,
+              borderStyle: 'dashed',
+              borderColor: isDragging ? 'primary.main' : 'divider',
+              bgcolor: isDragging ? 'action.hover' : 'transparent',
+              textAlign: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              '&:hover': {
+                borderColor: 'primary.main',
+                bgcolor: 'action.hover',
+              },
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              handlePluginUpload(e.dataTransfer.files);
+            }}
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.lbplugin';
+              input.onchange = (e) => handlePluginUpload((e.target as HTMLInputElement).files);
+              input.click();
+            }}
+          >
+            {pluginUploadMutation.isPending ? (
+              <Stack spacing={1} alignItems="center">
+                <CircularProgress size={24} />
+                <Typography color="text.secondary">Installing plugin...</Typography>
+              </Stack>
+            ) : (
+              <Stack spacing={1} alignItems="center">
+                <UploadIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
+                <Typography>
+                  Drag and drop a .lbplugin file here, or click to browse
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Plugins are automatically installed and loaded
+                </Typography>
+              </Stack>
+            )}
+          </Paper>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+
           {pluginsLoading ? (
             <Box sx={{ p: 4, textAlign: 'center' }}>
               <CircularProgress />
@@ -489,6 +585,24 @@ export default function AdminPage() {
                         color={plugin.status === 'healthy' ? 'success' : plugin.status === 'error' ? 'error' : 'default'}
                         variant="outlined"
                       />
+                      <Box sx={{ flex: 1 }} />
+                      <IconButton
+                        size="small"
+                        color="error"
+                        title={`Uninstall ${plugin.name}`}
+                        disabled={pluginUninstallMutation.isPending}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent accordion toggle
+                          const message = plugin.type === 'container'
+                            ? `Uninstall "${plugin.name}"? This will delete the plugin files and remove its Docker image.`
+                            : `Uninstall "${plugin.name}"? This will delete all plugin files.`;
+                          if (confirm(message)) {
+                            pluginUninstallMutation.mutate(plugin.id);
+                          }
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
                     </Stack>
                   </AccordionSummary>
                   <AccordionDetails>

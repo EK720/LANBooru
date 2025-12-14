@@ -40,6 +40,7 @@ services:
       REQUIRE_EDIT_PASSWORD: ${REQUIRE_EDIT_PASSWORD}
       EDIT_PASSWORD: ${EDIT_PASSWORD}
       PLUGINS_DIR: ${PLUGINS_DIR}
+      MAX_PLUGIN_SIZE_MB: ${MAX_PLUGIN_SIZE_MB}
     volumes:
       # Option 1: Mount your home directory to access all your images
       # This allows adding folders via web UI without restarting

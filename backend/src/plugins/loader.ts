@@ -87,6 +87,20 @@ export class PluginLoader {
   }
 
   /**
+   * Load a single plugin from an archive path (for newly uploaded plugins)
+   */
+  async loadSinglePlugin(archivePath: string): Promise<LoadedPlugin | null> {
+    const filename = path.basename(archivePath);
+    if (!filename.endsWith(PLUGIN_EXTENSION)) {
+      console.error(`Invalid plugin file: ${filename}`);
+      return null;
+    }
+
+    const savedConfig = this.loadSavedConfig();
+    return this.loadPlugin(filename, savedConfig);
+  }
+
+  /**
    * Load a single plugin from a .lbplugin file
    */
   private async loadPlugin(
@@ -311,5 +325,78 @@ export class PluginLoader {
     }
 
     return null;
+  }
+
+  /**
+   * Get the path to a plugin's .lbplugin archive file
+   */
+  getPluginArchivePath(pluginId: string): string | null {
+    const files = fs.readdirSync(this.pluginsDir)
+      .filter(f => f.endsWith(PLUGIN_EXTENSION));
+
+    for (const file of files) {
+      const extractedPath = path.join(this.extractedDir, file.replace(PLUGIN_EXTENSION, ''));
+      const manifestPath = path.join(extractedPath, 'manifest.json');
+
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+          if (manifest.id === pluginId) {
+            return path.join(this.pluginsDir, file);
+          }
+        } catch {
+          // Skip invalid manifests
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Remove a plugin's files (extracted directory and .lbplugin archive)
+   */
+  removePluginFiles(pluginId: string): { archiveDeleted: boolean; extractedDeleted: boolean } {
+    const result = { archiveDeleted: false, extractedDeleted: false };
+
+    // Get paths BEFORE deleting anything (getExtractedPath relies on archive existing)
+    const archivePath = this.getPluginArchivePath(pluginId);
+    const extractedPath = this.getExtractedPath(pluginId);
+
+    // Delete the archive
+    if (archivePath && fs.existsSync(archivePath)) {
+      try {
+        fs.unlinkSync(archivePath);
+        console.log(`Deleted plugin archive: ${archivePath}`);
+        result.archiveDeleted = true;
+      } catch (err) {
+        console.error(`Failed to delete plugin archive ${archivePath}:`, err);
+      }
+    }
+
+    // Delete the extracted directory
+    if (extractedPath && fs.existsSync(extractedPath)) {
+      try {
+        fs.rmSync(extractedPath, { recursive: true });
+        console.log(`Deleted extracted plugin directory: ${extractedPath}`);
+        result.extractedDeleted = true;
+      } catch (err) {
+        console.error(`Failed to delete extracted directory ${extractedPath}:`, err);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Remove a plugin's configuration from plugin-config.json
+   */
+  removePluginConfig(pluginId: string): void {
+    const allConfig = this.loadSavedConfig();
+    if (pluginId in allConfig) {
+      delete allConfig[pluginId];
+      fs.writeFileSync(this.configPath, JSON.stringify(allConfig, null, 2));
+      console.log(`Removed config for plugin: ${pluginId}`);
+    }
   }
 }
