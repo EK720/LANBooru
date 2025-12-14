@@ -269,8 +269,7 @@ export async function removePluginImage(pluginId: string): Promise<boolean> {
   // Image exists, try to remove it
   try {
     execSync(`docker rmi ${imageName}`, { stdio: 'pipe' });
-    console.log(`Removed Docker image: ${imageName}`);
-    return true;
+    console.log(`    Removed Docker image: ${imageName}`);
   } catch (err) {
     console.warn(`Failed to remove Docker image ${imageName}:`, err);
     return false;

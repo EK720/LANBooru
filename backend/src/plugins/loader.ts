@@ -367,7 +367,7 @@ export class PluginLoader {
     if (archivePath && fs.existsSync(archivePath)) {
       try {
         fs.unlinkSync(archivePath);
-        console.log(`Deleted plugin archive: ${archivePath}`);
+        console.log(`    Deleted plugin archive: ${archivePath}`);
         result.archiveDeleted = true;
       } catch (err) {
         console.error(`Failed to delete plugin archive ${archivePath}:`, err);
@@ -378,7 +378,7 @@ export class PluginLoader {
     if (extractedPath && fs.existsSync(extractedPath)) {
       try {
         fs.rmSync(extractedPath, { recursive: true });
-        console.log(`Deleted extracted plugin directory: ${extractedPath}`);
+        console.log(`    Deleted extracted plugin directory: ${extractedPath}`);
         result.extractedDeleted = true;
       } catch (err) {
         console.error(`Failed to delete extracted directory ${extractedPath}:`, err);
@@ -396,7 +396,7 @@ export class PluginLoader {
     if (pluginId in allConfig) {
       delete allConfig[pluginId];
       fs.writeFileSync(this.configPath, JSON.stringify(allConfig, null, 2));
-      console.log(`Removed config for plugin: ${pluginId}`);
+      console.log(`    Removed config for plugin: ${pluginId}`);
     }
   }
 }
