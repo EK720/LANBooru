@@ -60,18 +60,40 @@ export async function execute(sql: string, params?: any[]): Promise<mysql.Result
 }
 
 export async function transaction<T>(
-  callback: (connection: mysql.PoolConnection) => Promise<T>
+  callback: (connection: mysql.PoolConnection) => Promise<T>,
+  maxRetries: number = 3
 ): Promise<T> {
   const connection = await pool.getConnection();
-  await connection.beginTransaction();
 
   try {
-    const result = await callback(connection);
-    await connection.commit();
-    return result;
-  } catch (error) {
-    await connection.rollback();
-    throw error;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      await connection.beginTransaction();
+
+      try {
+        const result = await callback(connection);
+        await connection.commit();
+        return result;
+      } catch (error: any) {
+        await connection.rollback();
+
+        // Check if it's a deadlock error
+        const isDeadlock = error.code === 'ER_LOCK_DEADLOCK' ||
+                           (error.message && error.message.includes('Deadlock'));
+
+        if (isDeadlock && attempt < maxRetries) {
+          // Exponential backoff: 100ms, 200ms, 400ms...
+          const delay = 100 * Math.pow(2, attempt - 1);
+          console.log(`Database deadlock, retry ${attempt}/${maxRetries} after ${delay}ms`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    // Should never reach here, but TypeScript needs it
+    throw new Error('Transaction failed after max retries');
   } finally {
     connection.release();
   }
