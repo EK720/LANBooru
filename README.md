@@ -88,7 +88,7 @@ LANBooru's plugin system lets you extend its functionality:
 
 Example plugins (in /example-plugins) include an AI auto-tagger and a collection analyzer.
 
-See [PLUGINS.md](PLUGINS.md) for the full plugin development guide.
+See [PLUGINS.md](docs/PLUGINS.md) for the full plugin development guide.
 
 ## Troubleshooting
 
