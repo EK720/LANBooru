@@ -22,7 +22,7 @@ LANBooru lets you organize your local image and video collection with tags, then
 
 2. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/lanbooru.git
+   git clone https://github.com/EK720/lanbooru.git
    cd lanbooru
    ```
 
@@ -110,5 +110,6 @@ By default, LANBooru binds to all interfaces but your firewall may block access.
 Found a bug or have a feature request? [Open an issue](https://github.com/EK720/LANBooru/issues) on GitHub.
 
 ## License
+
 
 This project is licensed under the [GNU GPL Version 3](https://www.gnu.org/licenses/gpl-3.0.en.html#license-text).
