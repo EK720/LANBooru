@@ -1,7 +1,7 @@
 -- Folders table
 CREATE TABLE IF NOT EXISTS folders (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    path VARCHAR(255) NOT NULL UNIQUE,
+    path VARCHAR(512) NOT NULL UNIQUE,
     do_recurse BOOLEAN NOT NULL DEFAULT TRUE,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     last_scanned_at DATETIME NULL,
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS images (
     INDEX idx_content_hash_1400 (content_hash_1400),
     INDEX idx_file_type (file_type),
     INDEX idx_created_at (created_at),
+    INDEX idx_updated_at (updated_at),
     INDEX idx_artist (artist),
     INDEX idx_rating (rating),
     FULLTEXT INDEX idx_filename (filename)
