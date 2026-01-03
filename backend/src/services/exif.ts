@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import { exiftool } from 'exiftool-vendored';
 import path from 'path';
 
@@ -99,7 +99,7 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
 
 	// Fall back to filesystem modified time if no valid EXIF date
 	if (!date) {
-		const fileTimes = fs.statSync(filePath);
+		const fileTimes = await fs.stat(filePath);
 		if (fileTimes) {
 			date = fileTimes.mtime;
 		}
