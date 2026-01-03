@@ -52,7 +52,7 @@ interface ParseResult {
 const DEFAULT_SORT_FIELD = 'date';
 const DEFAULT_SORT_DIRECTION: 'asc' | 'desc' = 'desc';
 
-const VALID_SORT_FIELDS = ['random', 'id', 'date', 'rating', 'height', 'width', 'size', 'updated'];
+const VALID_SORT_FIELDS = ['random', 'id', 'date', 'rating', 'height', 'width', 'size', 'updated', 'file'];
 const FILTER_METATAGS = ['rating', 'artist', 'date', 'id', 'file'];
 
 const SORT_FIELD_MAP: Record<string, string> = {
@@ -63,7 +63,8 @@ const SORT_FIELD_MAP: Record<string, string> = {
   'height': 'images.height',
   'width': 'images.width',
   'size': 'images.file_size',
-  'updated': 'images.updated_at'
+  'updated': 'images.updated_at',
+  'file': 'images.filename'
 };
 
 export const RATING_MAP: Record<string, number> = {

@@ -276,6 +276,11 @@ export default function HelpPage() {
                 <TableCell><CodeExample>sort:updated</CodeExample></TableCell>
               </TableRow>
               <TableRow>
+                <TableCell>file</TableCell>
+                <TableCell>Filename (alphabetical)</TableCell>
+                <TableCell><CodeExample>sort:file</CodeExample></TableCell>
+              </TableRow>
+              <TableRow>
                 <TableCell>random</TableCell>
                 <TableCell>Random order</TableCell>
                 <TableCell><CodeExample>sort:random</CodeExample></TableCell>
