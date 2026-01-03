@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import tar from 'tar';
 import type { PluginManifest, LoadedPlugin, PluginConfig, ConfigField } from './types';
 
 const PLUGIN_EXTENSION = '.lbplugin';
@@ -158,9 +158,10 @@ export class PluginLoader {
 
       fs.mkdirSync(targetDir, { recursive: true });
 
-      // Extract using system tar (available on all Linux systems)
-      execSync(`tar -xzf "${archivePath}" -C "${targetDir}"`, {
-        stdio: 'pipe',
+      // Extract using node-tar (safer than shell command, no injection risk)
+      await tar.extract({
+        file: archivePath,
+        cwd: targetDir,
       });
 
       // Check if files were extracted into a subdirectory
