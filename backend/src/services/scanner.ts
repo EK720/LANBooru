@@ -373,6 +373,7 @@ async function processFile(filePath: string): Promise<boolean> {
       artist: metadata.artist || undefined,
       rating: metadata.rating || undefined,
       source: metadata.source || undefined,
+      tags: metadata.tags,
       created_at: metadata.date || new Date(),
       updated_at: new Date(),
     } as Image);
