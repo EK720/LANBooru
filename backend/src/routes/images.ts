@@ -67,14 +67,14 @@ router.get('/:id', async (req, res) => {
     res.json(imageWithTags);
   } catch (error) {
     console.error('Failed to fetch image:', error);
-    res.status(500).json({ error: 'Failed to fetch image' });
+    return res.status(500).json({ error: 'Failed to fetch image' });
   }
 });
 
 /**
  * GET /api/image/:id/file
  * Serve the original image/video file with proper filename
- * Query params: download=1 to force download with original filename
+ * Query params: download=1 to force download
  */
 router.get('/:id/file', async (req, res) => {
   try {
@@ -99,7 +99,7 @@ router.get('/:id/file', async (req, res) => {
 
     // Set content-disposition based on download mode
     if (isDownload) {
-      // Use original filename for downloads
+      // Use generated filename {hash}.{ext} for downloads
       res.setHeader('Content-Disposition', `attachment; filename="${image.file_hash}.${image.file_type}"`);
     } else {
       // Use hash-based filename for inline viewing
@@ -111,7 +111,7 @@ router.get('/:id/file', async (req, res) => {
     res.sendFile(image.file_path);
   } catch (error) {
     console.error('Failed to serve image file:', error);
-    res.status(500).json({ error: 'Failed to serve image file' });
+    return res.status(500).json({ error: 'Failed to serve image file' });
   }
 });
 
@@ -157,7 +157,7 @@ router.get('/:id/thumbnail', async (req, res) => {
     }
   } catch (error) {
     console.error('Failed to serve thumbnail:', error);
-    res.status(500).json({ error: 'Failed to serve thumbnail' });
+    return res.status(500).json({ error: 'Failed to serve thumbnail' });
   }
 });
 
@@ -304,7 +304,7 @@ router.patch('/:id', requireEditPassword, async (req, res) => {
     });
   } catch (error) {
     console.error('Failed to update image:', error);
-    res.status(500).json({ success: false, error: 'Failed to update image' });
+    return res.status(500).json({ success: false, error: 'Failed to update image' });
   }
 });
 
@@ -345,7 +345,7 @@ router.delete('/:id', requireEditPassword, async (req, res) => {
     res.json({ success: true, fileDeleted: shouldDeleteFile });
   } catch (error) {
     console.error('Failed to delete image:', error);
-    res.status(500).json({ success: false, error: 'Failed to delete image' });
+    return res.status(500).json({ success: false, error: 'Failed to delete image' });
   }
 });
 
