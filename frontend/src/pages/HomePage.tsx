@@ -166,7 +166,7 @@ export default function HomePage() {
           LANBooru
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-          v1.0.0
+          v{VITE_APP_VERSION}
         </Typography>
 
         {/* Stats row */}
