@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
 import ffmpeg from 'fluent-ffmpeg';
@@ -263,8 +264,25 @@ export async function deleteThumbnail(fileHash: string): Promise<void> {
 
 /**
  * Calculate file hash (SHA256)
+ * Uses streaming for large files (>50MB) to avoid memory spikes
  */
+const STREAM_THRESHOLD = 50 * 1024 * 1024; // 50MB
+
 export async function calculateFileHash(filePath: string): Promise<string> {
+  const stats = await fs.stat(filePath);
+
+  if (stats.size > STREAM_THRESHOLD) {
+    // Stream large files to avoid memory spikes
+    return new Promise((resolve, reject) => {
+      const hash = createHash('sha256');
+      const stream = createReadStream(filePath);
+      stream.on('data', (chunk) => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
+  }
+
+  // Load small files directly, faster
   const buffer = await fs.readFile(filePath);
   return createHash('sha256').update(buffer).digest('hex');
 }
