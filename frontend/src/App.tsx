@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage';
 import ImagePage from './pages/ImagePage';
 import AdminPage from './pages/AdminPage';
 import HelpPage from './pages/HelpPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 // Signal to fallback script that React has mounted
 declare global {
@@ -43,6 +44,7 @@ export default function App() {
                 <Route path="/image/:id" element={<ImagePage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/help" element={<HelpPage />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
           </BrowserRouter>
