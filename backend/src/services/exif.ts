@@ -19,9 +19,14 @@ export interface ExifMetadata {
  */
 export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
   try {
-    // Use any type since different file types have different fields
-    const metadata: any = await exiftool.read(filePath);
     const ext = path.extname(filePath).toLowerCase();
+
+    // GIF files need readArgs: [] to disable -fast mode, which otherwise
+    // causes exiftool to skip XMP data located after the image frames
+    const readOptions = ext === '.gif' ? { readArgs: [] } : undefined;
+
+    // Use any type since different file types have different fields
+    const metadata: any = await exiftool.read(filePath, readOptions);
 
     let tags: string[] = [];
     let artist: string | undefined;
@@ -29,7 +34,7 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
     let width: number | undefined;
     let height: number | undefined;
     let source: string | undefined;
-	let date: Date | undefined;
+    let date: Date | undefined;
 
     // Extract tags based on file type
     if (ext === '.jpg' || ext === '.jpeg') {
@@ -38,35 +43,30 @@ export async function extractMetadata(filePath: string): Promise<ExifMetadata> {
       if (xpKeywords && typeof xpKeywords === 'string') {
         tags = xpKeywords.split(';').map(t => t.trim()).filter(t => t.length > 0);
       }
-
-      artist = metadata.Artist;
-      width = metadata.ImageWidth;
-      height = metadata.ImageHeight;
     } else if (ext === '.png' || ext === '.gif' || ext === '.webp') {
-      // PNG/GIF/WebP: Read from Subject field (standard PNG field)
+      // PNG/GIF/WebP: Read from Subject field
       const subject = metadata.Subject;
       if (subject) {
-        if (Array.isArray(subject)) {
+        if (Array.isArray(subject) && subject.length > 1) {
           tags = subject.map(t => String(t).trim()).filter(t => t.length > 0);
+		} else if (subject.length === 1 && typeof subject[0] === 'string'){
+		  // if array.length is 1, get the only element and treat it like a string
+		  tags = subject[0].split(';').map(t => t.trim()).filter(t => t.length > 0);
         } else if (typeof subject === 'string') {
           tags = subject.split(';').map(t => t.trim()).filter(t => t.length > 0);
         }
       }
-
-      artist = metadata.Artist;
-      width = metadata.ImageWidth;
-      height = metadata.ImageHeight;
     } else if (ext === '.mp4' || ext === '.webm' || ext === '.mkv') {
       // Video: Read from Genre field (semicolon-separated)
       const genre = metadata.Genre;
       if (genre && typeof genre === 'string') {
         tags = genre.split(';').map(t => t.trim()).filter(t => t.length > 0);
       }
-
-      artist = metadata.Artist;
-      width = metadata.ImageWidth;
-      height = metadata.ImageHeight;
     }
+	
+	artist = metadata.Artist;
+    width = metadata.ImageWidth;
+    height = metadata.ImageHeight;
 
     // Extract rating from XMP if available
     if (metadata.Rating) {
