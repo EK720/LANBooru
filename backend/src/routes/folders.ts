@@ -138,9 +138,32 @@ router.delete('/:id', async (req, res) => {
         [folder.path + '/%']
       );
 
-      // Delete each image properly (handles thumbnails, tags, duplicate groups)
-      for (const delImage of delImages) {
-        await deleteImage(delImage.id);
+      if (delImages.length > 0) {
+        const imageIds = delImages.map(img => img.id);
+        const placeholders = imageIds.map(() => '?').join(',');
+
+        // Find which images are duplicate group primes (they need sequential deletion
+        // to properly handle group elections without race conditions)
+        const primeRows = await query<{ prime_id: number }>(
+          `SELECT DISTINCT prime_id FROM duplicate_groups WHERE prime_id IN (${placeholders})`,
+          imageIds
+        );
+        const primeSet = new Set(primeRows.map(p => p.prime_id));
+
+        const nonPrimes = delImages.filter(img => !primeSet.has(img.id));
+        const primes = delImages.filter(img => primeSet.has(img.id));
+
+        // Delete non-primes in parallel batches
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < nonPrimes.length; i += BATCH_SIZE) {
+          const batch = nonPrimes.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch.map(img => deleteImage(img.id)));
+        }
+
+        // Delete primes sequentially (they may need to elect new primes from survivors)
+        for (const prime of primes) {
+          await deleteImage(prime.id);
+        }
       }
 
       // Delete folder from database
