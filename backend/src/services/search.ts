@@ -702,7 +702,7 @@ export async function searchImages(searchQuery: SearchQuery): Promise<SearchResu
   // Get paginated results
   const offset = (page - 1) * limit;
   const imagesSql = `
-    SELECT DISTINCT images.*
+    SELECT images.*
     FROM images
     WHERE ${whereClause}
     ORDER BY ${orderBy}
@@ -711,24 +711,39 @@ export async function searchImages(searchQuery: SearchQuery): Promise<SearchResu
 
   const images = await query<any>(imagesSql, [...params, limit, offset]);
 
-  // Load tags for each image
-  const imagesWithTags: ImageWithTags[] = await Promise.all(
-    images.map(async (image) => {
-      const tags = await query<{ name: string }>(
-        `SELECT t.name
-         FROM tags t
-         JOIN image_tags it ON t.id = it.tag_id
-         WHERE it.image_id = ?
-         ORDER BY t.name`,
-        [image.id]
-      );
+  // Early return if no results
+  if (images.length === 0) {
+    return {
+      images: [],
+      total,
+      page,
+      limit,
+      total_pages: Math.ceil(total / limit)
+    };
+  }
 
-      return {
-        ...image,
-        tags: tags.map(t => t.name)
-      };
-    })
+  // Get all tags for these images in a single query, grouped by image
+  const imageIds = images.map((img: any) => img.id);
+  const placeholders = imageIds.map(() => '?').join(',');
+  const tagsSql = `
+    SELECT it.image_id, GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR '||') as tag_list
+    FROM image_tags it
+    JOIN tags t ON it.tag_id = t.id
+    WHERE it.image_id IN (${placeholders})
+    GROUP BY it.image_id
+  `;
+  const tagRows = await query<{ image_id: number; tag_list: string | null }>(tagsSql, imageIds);
+
+  // Build lookup map (one row per image, split combined tag string)
+  const tagsByImage = new Map(
+    tagRows.map(row => [row.image_id, row.tag_list ? row.tag_list.split('||') : []])
   );
+
+  // Combine images with their tags
+  const imagesWithTags: ImageWithTags[] = images.map((image: any) => ({
+    ...image,
+    tags: tagsByImage.get(image.id) || []
+  }));
 
   return {
     images: imagesWithTags,
