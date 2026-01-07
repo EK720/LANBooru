@@ -219,7 +219,9 @@ class QueryParser {
     const andTerms: ASTNode[] = [];
 
     for (const term of filterTerms) {
-      if (term.type === 'OR' && term.children) {
+      // Only spread single-child OR nodes (from ~ prefix)
+      // Multi-child OR nodes (from groups like {~a ~b}) stay as atomic units
+      if (term.type === 'OR' && term.children && term.children.length === 1) {
         orTerms.push(...term.children);
       } else {
         andTerms.push(term);
@@ -331,7 +333,9 @@ class QueryParser {
         const andTerms: ASTNode[] = [];
 
         for (const t of groupTerms) {
-          if (t.type === 'OR' && t.children) {
+          // Only spread single-child OR nodes (from ~ prefix)
+          // Multi-child OR nodes (from nested groups) stay as atomic units
+          if (t.type === 'OR' && t.children && t.children.length === 1) {
             orTerms.push(...t.children);
           } else {
             andTerms.push(t);

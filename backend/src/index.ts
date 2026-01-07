@@ -76,11 +76,6 @@ app.use('/api/stats', statsRouter);
 app.use('/api/plugins', createPluginRoutes(pluginRegistry, PLUGINS_DIR, app));
 app.use('/lite', liteRouter);
 
-// API 404 handler
-app.use('/api', (req: express.Request, res: express.Response) => {
-  res.status(404).json({ error: 'Nobody here but us chickens!' });
-});
-
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);
@@ -113,6 +108,11 @@ async function start() {
     // Load plugins
     await pluginRegistry.loadPlugins();
     await pluginRegistry.registerRoutes(app);
+
+    // API 404 handler for anything uncaught
+    app.use('/api', (req: express.Request, res: express.Response) => {
+      res.status(404).json({ error: 'Nobody here but us chickens!' });
+    });
 
     // Check health of container/external plugins
     await pluginRegistry.checkHealth();
