@@ -229,10 +229,13 @@ router.patch('/:id', requireEditPassword, async (req, res) => {
          WHERE it.image_id = ?`,
         [imageId]
       );
-      const existingTags = new Set(existingTagRows.map(t => t.name));
+      const existingTagsNorm = new Set(existingTagRows.map(t => t.name.toLowerCase()));
 
-      const tagsToAdd = [...newTags].filter(t => !existingTags.has(t));
-      const tagsToRemove = [...existingTags].filter(t => !newTags.has(t));
+      // Compute diff (compare lowercase to lowercase)
+      const tagsToAdd = [...newTags].filter(t => !existingTagsNorm.has(t));
+      const tagsToRemove = existingTagRows
+        .map(t => t.name)
+        .filter(t => !newTags.has(t.toLowerCase()));
 
       if (tagsToRemove.length > 0) {
         await removeTagsFromImage(imageId, tagsToRemove);

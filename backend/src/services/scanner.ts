@@ -239,9 +239,10 @@ async function processFile(filePath: string): Promise<boolean> {
 
     const imageId = result.insertId;
 
-    // Add initial tags
-    if (metadata.tags.length > 0) {
-      await addTagsToImage(imageId, metadata.tags);
+    // Add initial tags (normalized to lowercase for consistency)
+    const normalizedTags = metadata.tags.map(t => t.toLowerCase());
+    if (normalizedTags.length > 0) {
+      await addTagsToImage(imageId, normalizedTags);
     }
 
     if (DUPLICATE_SCAN_ENABLED) {
