@@ -53,7 +53,7 @@ const DEFAULT_SORT_FIELD = 'date';
 const DEFAULT_SORT_DIRECTION: 'asc' | 'desc' = 'desc';
 
 const VALID_SORT_FIELDS = ['random', 'id', 'date', 'rating', 'height', 'width', 'size', 'updated', 'file'];
-const FILTER_METATAGS = ['rating', 'artist', 'date', 'id', 'file'];
+const FILTER_METATAGS = ['rating', 'artist', 'date', 'id', 'file', 'tags', 'source'];
 
 const SORT_FIELD_MAP: Record<string, string> = {
   'random': 'RAND()',
@@ -545,6 +545,47 @@ function buildIdSQL(value: string, operator?: string): { sql: string; params: an
 }
 
 /**
+ * Build SQL for source metatag (searches by source URL/field)
+ */
+function buildSourceSQL(value: string): { sql: string; params: any[] } {
+  if (value.includes('*')) {
+    // Wildcard support
+    const likePattern = value
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_')
+      .replace(/\*/g, '%');
+
+    return {
+      sql: "images.source LIKE ? ESCAPE '\\\\'",
+      params: [likePattern]
+    };
+  }
+
+  return {
+    sql: 'images.source = ?',
+    params: [value]
+  };
+}
+
+/**
+ * Build SQL for tags metatag (filters by tag count)
+ */
+function buildTagsSQL(value: string, operator?: string): { sql: string; params: any[] } {
+  const countValue = parseInt(value);
+
+  if (isNaN(countValue)) {
+    return { sql: '1=0', params: [] };
+  }
+
+  const sqlOp = operator || '=';
+
+  return {
+    sql: `(SELECT COUNT(*) FROM image_tags WHERE image_id = images.id) ${sqlOp} ?`,
+    params: [countValue]
+  };
+}
+
+/**
  * Build SQL WHERE clause from AST
  */
 function buildSQLFromAST(node: ASTNode): { sql: string; params: any[] } {
@@ -594,6 +635,10 @@ function buildSQLFromAST(node: ASTNode): { sql: string; params: any[] } {
           return buildDateSQL(value, operator);
         case 'id':
           return buildIdSQL(value, operator);
+        case 'source':
+          return buildSourceSQL(value);
+        case 'tags':
+          return buildTagsSQL(value, operator);
         case 'sort': // Sort metatags should have been arleady extracted - this is a no-op filter
         default:
           return { sql: '1=1', params: [] };

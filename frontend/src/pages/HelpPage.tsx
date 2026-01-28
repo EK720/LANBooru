@@ -224,6 +224,32 @@ export default function HelpPage() {
         <Typography variant="body2" color="text.secondary">
           Examples: <CodeExample>id:1234</CodeExample> (exact), <CodeExample>id:&gt;1000</CodeExample> (greater than), <CodeExample>id:&lt;500</CodeExample> (less than)
         </Typography>
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Source */}
+        <Typography variant="h6" gutterBottom>
+          source:
+        </Typography>
+        <Typography variant="body2" paragraph>
+          Filter by source URL. Supports wildcards (*) and NOT/OR operators.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Examples: <CodeExample>source:*pixiv*</CodeExample> (contains "pixiv"), <CodeExample>source:*x.com*</CodeExample> (from X/Twitter), <CodeExample>-source:*</CodeExample> (no source)
+        </Typography>
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Tags */}
+        <Typography variant="h6" gutterBottom>
+          tags:
+        </Typography>
+        <Typography variant="body2" paragraph>
+          Filter by tag count. Supports exact match and comparison operators.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Examples: <CodeExample>tags:0</CodeExample> (untagged), <CodeExample>tags:&gt;10</CodeExample> (more than 10 tags), <CodeExample>tags:&lt;3</CodeExample> (needs tagging)
+        </Typography>
       </Paper>
 
       {/* Sorting */}
