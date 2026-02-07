@@ -229,7 +229,7 @@ export default function AdminPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: number; updates: { recursive?: boolean; enabled?: boolean } }) =>
+    mutationFn: ({ id, updates }: { id: number; updates: { do_recurse?: boolean; enabled?: boolean } }) =>
       updateFolder(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['folders'] });

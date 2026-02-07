@@ -96,7 +96,7 @@ export async function getFolders(): Promise<Folder[]> {
 export async function addFolder(path: string, recursive: boolean = true): Promise<Folder> {
   return fetchJSON<Folder>(`${API_BASE}/folders`, {
     method: 'POST',
-    body: JSON.stringify({ path, recursive }),
+    body: JSON.stringify({ path, do_recurse: recursive }),
   });
 }
 
@@ -106,7 +106,7 @@ export async function deleteFolder(id: number): Promise<void> {
 
 export async function updateFolder(
   id: number,
-  updates: { recursive?: boolean; enabled?: boolean }
+  updates: { do_recurse?: boolean; enabled?: boolean }
 ): Promise<Folder> {
   return fetchJSON<Folder>(`${API_BASE}/folders/${id}`, {
     method: 'PATCH',
