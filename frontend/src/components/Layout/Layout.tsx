@@ -6,7 +6,7 @@ export default function Layout() {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         display: 'flex',
         flexDirection: 'column',
         bgcolor: 'background.default',

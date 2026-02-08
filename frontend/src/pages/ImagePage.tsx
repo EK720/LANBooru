@@ -500,7 +500,7 @@ export default function ImagePage() {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, minHeight: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, minHeight: '100%', overflowX: 'hidden' }}>
       {/* Image viewer */}
       <Box
         sx={{
@@ -632,7 +632,7 @@ export default function ImagePage() {
             alignItems: 'center',
             justifyContent: 'center',
             p: 2,
-            minHeight: { xs: '50vh', md: 'calc(100vh - 64px)' },
+            minHeight: { xs: '50dvh', md: 'calc(100dvh - 64px)' },
           }}
         >
           {isLoading ? (
