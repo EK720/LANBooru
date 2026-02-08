@@ -205,6 +205,12 @@ export default function AdminPage() {
   const { data: plugins, isLoading: pluginsLoading } = useQuery({
     queryKey: ['plugins'],
     queryFn: getPlugins,
+    // Poll every 5 seconds while any plugin is loading (e.g., downloading model)
+    refetchInterval: (query) => {
+      const data = query.state.data as PluginInfo[] | undefined;
+      const hasLoadingPlugin = data?.some(p => p.status === 'loading');
+      return hasLoadingPlugin ? 5000 : false;
+    },
   });
 
   const addMutation = useMutation({
@@ -583,10 +589,11 @@ export default function AdminPage() {
                         variant="outlined"
                       />
                       <Chip
-                        label={plugin.status}
+                        label={plugin.status === 'loading' ? 'Starting...' : plugin.status}
                         size="small"
-                        color={plugin.status === 'healthy' ? 'success' : plugin.status === 'error' ? 'error' : 'default'}
+                        color={plugin.status === 'healthy' ? 'success' : plugin.status === 'error' ? 'error' : 'warning'}
                         variant="outlined"
+                        icon={plugin.status === 'loading' ? <CircularProgress size={14} color="inherit" /> : undefined}
                       />
                       <Box sx={{ flex: 1 }} />
                       <IconButton
@@ -613,6 +620,12 @@ export default function AdminPage() {
                       <Typography variant="body2" color="text.secondary">
                         {plugin.description}
                       </Typography>
+
+                      {plugin.status === 'loading' && (
+                        <Alert severity="info" icon={<CircularProgress size={20} />}>
+                          Plugin is starting up. This may take a few minutes if models need to be downloaded.
+                        </Alert>
+                      )}
 
                       <FormControlLabel
                         control={
