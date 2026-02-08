@@ -51,18 +51,18 @@ async function extractVideoFrame(filePath: string, timestamp: number): Promise<B
 }
 
 /**
- * Check if an image is mostly black or mostly white (average brightness below threshold or above half threshold)
+ * Check if an image is mostly a solid color (low variance across all channels)
  */
-async function isFrameSolid(frameBuffer: Buffer, threshold: number = 30): Promise<boolean> {
+async function isFrameSolid(frameBuffer: Buffer, varianceThreshold: number = 15): Promise<boolean> {
   try {
     const { channels } = await sharp(frameBuffer).stats();
 
-    // Calculate average brightness across all channels
-    const avgBrightness = channels.reduce((sum, ch) => sum + ch.mean, 0) / channels.length;
+    // A solid frame has very low standard deviation across all channels
+    const avgStdev = channels.reduce((sum, ch) => sum + ch.stdev, 0) / channels.length;
 
-    return (avgBrightness < threshold || avgBrightness > (255-(threshold/2)));
+    return avgStdev < varianceThreshold;
   } catch (error) {
-    console.error('Failed to analyze frame brightness:', error);
+    console.error('Failed to analyze frame uniformity:', error);
     return false; // If we can't determine, assume it's fine
   }
 }
@@ -178,7 +178,7 @@ export async function generateThumbnail(
     let imageBuffer: Buffer;
 
     // Handle videos
-    if (['.mp4', '.webm', '.mkv'].includes(ext)) {
+    if (['.mp4', '.webm', '.mkv', '.gif'].includes(ext)) {
       const duration = await getVideoDuration(filePath);
 
       if (duration <= 0) {
@@ -186,8 +186,8 @@ export async function generateThumbnail(
         return EMPTY_HASHES;
       }
 
-      // Try frames at 0s, 1/3, and 2/3 through the video
-      const timestamps = [0, duration / 3, (duration * 2) / 3];
+      // Try frames at 0s, 1/3, center, and 2/3 through the video
+      const timestamps = [0, duration / 3, duration / 2, (duration * 2) / 3];
 
       for (const timestamp of timestamps) {
         const frameBuffer = await extractVideoFrame(filePath, timestamp);
