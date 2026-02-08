@@ -134,7 +134,7 @@ router.delete('/:id', async (req, res) => {
       // Clean up images before deleting folder record
       // This way if cleanup fails, folder record still exists for retry
       const delImages = await query<{ id: number }>(
-        'SELECT id FROM images WHERE file_path LIKE ?',
+        'SELECT id FROM images WHERE file_path LIKE ? ORDER BY id DESC',
         [folder.path + '/%']
       );
 
